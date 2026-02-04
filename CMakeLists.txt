@@ -41,8 +41,8 @@ nanobind_add_module(cuda_mppi bindings/bindings.cu ${JIT_SOURCES})
 target_link_libraries(cuda_mppi PRIVATE cuda_mppi_lib)
 
 # Install into the python package
-install(TARGETS cuda_mppi DESTINATION jax_mppi)
-install(DIRECTORY include/mppi DESTINATION jax_mppi/include)
+install(TARGETS cuda_mppi DESTINATION .)
+install(DIRECTORY include/mppi DESTINATION include)
 
 # Example executable to verify build (disabled due to Eigen/CUDA compatibility warnings)
 # add_executable(mppi_test src/main_test.cu)
