@@ -47,3 +47,6 @@ install(DIRECTORY include/mppi DESTINATION jax_mppi/include)
 # Example executable to verify build (disabled due to Eigen/CUDA compatibility warnings)
 # add_executable(mppi_test src/main_test.cu)
 # target_link_libraries(mppi_test PRIVATE cuda_mppi_lib)
+
+add_executable(pendulum_test src/pendulum_test.cu)
+target_link_libraries(pendulum_test PRIVATE cuda_mppi_lib)
