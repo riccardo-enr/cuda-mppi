@@ -1,0 +1,60 @@
+---
+title: "Getting Started"
+---
+
+# Prerequisites
+
+To build and use `cuda-mppi`, you need the following dependencies:
+
+*   **Operating System**: Linux (Ubuntu 20.04+ recommended)
+*   **CUDA Toolkit**: Version 11.0 or higher
+*   **CMake**: Version 3.18 or higher
+*   **C++ Compiler**: GCC 9+ or Clang 10+ (supporting C++17)
+*   **Python**: Version 3.8+ (for bindings)
+
+# Installation
+
+## 1. Standalone C++ Build
+
+If you want to use the library purely as a C++ dependency or run the provided tests:
+
+```bash
+# Clone the repository
+git clone https://github.com/riccardo-enr/cuda-mppi.git
+cd cuda-mppi
+
+# Create build directory
+mkdir build && cd build
+
+# Configure and Build
+cmake ..
+make -j$(nproc)
+```
+
+## 2. Python Bindings (via jax_mppi)
+
+This library is primarily designed to be the backend for the [jax_mppi](https://github.com/riccardo-enr/jax_mppi) project. However, you can build the bindings locally:
+
+```bash
+# Install dependencies
+pip install nanobind scikit-build-core numpy
+
+# Build and install in editable mode
+pip install -e .
+```
+
+# Verification
+
+To verify the installation, you can run the provided C++ tests:
+
+```bash
+cd build
+./pendulum_test
+./i_mppi_test
+```
+
+Or test the Python bindings:
+
+```bash
+python -c "import cuda_mppi; print(cuda_mppi.MPPIConfig(100, 50, 4, 2, 0.1, 0.05, 1.0, 0.0, 0))"
+```

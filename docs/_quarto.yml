@@ -10,8 +10,31 @@ website:
         href: index.qmd
       - text: "Plans"
         href: plan/index.qmd
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - section: "Introduction"
+        contents:
+          - index.qmd
+          - getting_started.qmd
+      - section: "Core Concepts"
+        contents:
+          - architecture.qmd
+          - jit.qmd
+      - section: "Controllers"
+        contents:
+          - controllers.qmd
+          - i_mppi.qmd
+      - section: "API Reference"
+        contents:
+          - python_api.qmd
+      - section: "Development"
+        contents:
+          - development.qmd
 
 format:
   html:
     theme: cosmo
     toc: true
+    code-copy: true

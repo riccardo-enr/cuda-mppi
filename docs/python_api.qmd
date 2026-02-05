@@ -1,0 +1,81 @@
+---
+title: "Python API Reference"
+---
+
+# Module: `cuda_mppi`
+
+The `cuda_mppi` module provides Python bindings for the core CUDA controllers.
+
+## Configuration
+
+### `MPPIConfig`
+
+The configuration struct for all controllers.
+
+```python
+class MPPIConfig:
+    def __init__(self, 
+                 num_samples: int, 
+                 horizon: int, 
+                 nx: int, 
+                 nu: int, 
+                 lambda_: float, 
+                 dt: float, 
+                 u_scale: float, 
+                 w_action_seq_cost: float, 
+                 num_support_pts: int):
+        ...
+```
+
+*   `num_samples` ($K$): Number of parallel rollouts.
+*   `horizon` ($T$): Number of timesteps per rollout.
+*   `nx`: State dimension.
+*   `nu`: Control dimension.
+*   `lambda_`: Temperature parameter (inverse sensitivity).
+*   `dt`: Integration timestep (seconds).
+*   `u_scale`: Scaling factor for control inputs (or noise variance).
+*   `w_action_seq_cost`: Weight for smoothness cost (SMPPI).
+*   `num_support_pts`: Number of knots for kernel approximation (KMPPI).
+
+## Controllers
+
+### `DoubleIntegratorMPPI`
+
+A specialized controller for a 4D double integrator system ($x, y, v_x, v_y$).
+
+```python
+class DoubleIntegratorMPPI:
+    def __init__(self, config: MPPIConfig):
+        ...
+    
+    def compute(self, state: numpy.ndarray) -> None:
+        """Compute the optimal control for the given state (async)."""
+    
+    def get_action(self) -> numpy.ndarray:
+        """Retrieve the first action of the optimal sequence."""
+        
+    def shift(self) -> None:
+        """Shift the nominal trajectory forward by one step."""
+```
+
+### `JITMPPIController`
+
+The generic controller that compiles user-defined dynamics/costs at runtime.
+
+```python
+class JITMPPIController:
+    def __init__(self, 
+                 config: MPPIConfig, 
+                 dynamics_code: str, 
+                 cost_code: str, 
+                 include_paths: List[str]):
+        ...
+        
+    def compute(self, state: numpy.ndarray) -> None: ...
+    def get_action(self) -> numpy.ndarray: ...
+    def shift(self) -> None: ...
+```
+
+## Note on Bindings
+
+Currently, the `DoubleIntegratorMPPI` and `JITMPPIController` are the primary classes exposed. Bindings for generalized SMPPI and KMPPI are present in the codebase but may require enabling in `bindings/bindings.cu`.

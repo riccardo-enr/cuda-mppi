@@ -4,23 +4,32 @@ title: "cuda-mppi"
 
 # Overview
 
-Documentation for the CUDA-accelerated MPPI project.
+**cuda-mppi** is a high-performance, GPU-accelerated library for Model Predictive Path Integral (MPPI) control. It provides a flexible C++ core with Python bindings, designed to serve as the backend for advanced autonomous navigation and control research.
 
-## Documentation
+## Key Features
 
-### Reactive Controllers (Tracking)
-*   [Theoretical Overview & Variants](controllers.qmd)
-    *   Standard MPPI
-    *   Smooth MPPI (SMPPI)
-    *   Kernel MPPI (KMPPI)
+*   **Speed**: Pure CUDA implementation capable of evaluating thousands of trajectories in parallel at hundreds of Hz.
+*   **Flexibility**: Template-based architecture allows for zero-overhead swapping of Dynamics and Cost functions.
+*   **JIT Compilation**: Define your system model in Python/C++ strings and compile optimized kernels at runtime using NVRTC.
+*   **Variants**: Includes Standard MPPI, Smooth MPPI (SMPPI), Kernel MPPI (KMPPI), and Informative MPPI (I-MPPI).
 
-### Planners / Exploration
-*   [Informative MPPI (I-MPPI)](i_mppi.qmd)
+## Documentation Structure
 
-## Quick start
+### [Getting Started](getting_started.qmd)
+Installation instructions for C++ standalone usage and Python integration.
 
-Render locally:
+### [Core Concepts](architecture.qmd)
+Understanding the architecture, memory model, and [JIT Compilation](jit.qmd).
 
-```bash
-uv run quarto render docs
-```
+### [Controllers](controllers.qmd)
+Detailed theoretical derivation and usage of the reactive tracking controllers.
+
+### [Planners](i_mppi.qmd)
+Documentation for the Informative-MPPI (I-MPPI) exploration planner.
+
+### [API Reference](python_api.qmd)
+Python API documentation for `cuda_mppi`.
+
+## License
+
+MIT License.

@@ -1,0 +1,59 @@
+---
+title: "Development Guide"
+---
+
+# Contribution Workflow
+
+1.  **Fork & Clone**: Fork the repository and clone it locally.
+2.  **Branch**: Create a feature branch (e.g., `feat/new-dynamics`).
+3.  **Implement**: Add your code (see below for adding dynamics).
+4.  **Test**: Run existing tests and add new ones.
+5.  **PR**: Submit a Pull Request.
+
+# Testing
+
+We use a combination of C++ standalone executables and Python scripts.
+
+## C++ Tests
+
+Located in `src/`. Built via CMake.
+
+```bash
+cd build
+cmake ..
+make
+./pendulum_test
+```
+
+## Python Tests
+
+Located in `tests/`. Run with `pytest`.
+
+```bash
+pytest tests/
+```
+
+# Adding New Dynamics
+
+To add a new hardcoded system (non-JIT):
+
+1.  **Create Header**: Create `include/mppi/instantiations/my_system.cuh`.
+2.  **Define Struct**:
+    ```cpp
+    struct MySystem {
+        static constexpr int STATE_DIM = ...;
+        static constexpr int CONTROL_DIM = ...;
+        
+        __device__ void step(const float* x, const float* u, float* x_next, float dt) const {
+            // Implementation
+        }
+    };
+    ```
+3.  **Create Test**: Add `src/my_system_test.cu` to verify it.
+4.  **Bind (Optional)**: Update `bindings/bindings.cu` to expose `MPPIController<MySystem, Cost>` to Python.
+
+# Coding Conventions
+
+*   **CUDA**: Use `__device__` for core logic. Avoid `malloc` in kernels.
+*   **Style**: Follow standard C++17 modern practices.
+*   **Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/).
