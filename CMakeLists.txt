@@ -54,3 +54,6 @@ install(DIRECTORY include/mppi DESTINATION include)
 
 add_executable(pendulum_test src/pendulum_test.cu)
 target_link_libraries(pendulum_test PRIVATE cuda_mppi_lib)
+
+add_executable(i_mppi_test src/i_mppi_test.cu)
+target_link_libraries(i_mppi_test PRIVATE cuda_mppi_lib)
