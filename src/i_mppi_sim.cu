@@ -45,12 +45,8 @@ __global__ void compute_info_gain_grid_kernel(
     float state[4] = {x_idx * resolution, y_idx * resolution, 0.0f, 0.0f};
     float u[2] = {0.0f, 0.0f};
     
-    // We only care about the info gain part of the cost
-    // We can call cost.compute_info_gain(state) if we expose it, 
-    // or just cost.compute and ignore the rest if cost is simple.
-    
-    // For now, let's assume we can call compute. 
-    // In FSMICost, compute returns lambda_info * info_gain + stage_cost
+    // We want to visualize ONLY the info gain part if possible, 
+    // or the full cost. Let's do full cost but it might be dominated by goal.
     output[y_idx * width + x_idx] = cost.compute(state, u, 0);
 }
 
@@ -79,30 +75,38 @@ void save_info_gain_map(FSMICost& cost, int width, int height, float resolution,
 
 void run_sim(float lambda_info, const std::string& prefix) {
     MPPIConfig config;
-    config.num_samples = 512;
-    config.horizon = 30;
+    config.num_samples = 1024;
+    config.horizon = 60;
     config.nx = 4;
     config.nu = 2;
     config.lambda = 0.1f;
     config.dt = 0.1f;
     config.u_scale = 10.0f;
     config.lambda_info = lambda_info;
-    config.alpha = 0.2f;
+    config.alpha = 0.1f;
 
     int width = 100;
     int height = 100;
     int size = width * height;
-    std::vector<float> h_map(size, 0.5f);
+    std::vector<float> h_map(size, 0.01f); // Mostly free
     
-    // Corridor from (0, 5) to (10, 5)
-    for(int y=40; y<60; ++y) {
-        for(int x=0; x<100; ++x) {
-            h_map[y*width + x] = 0.01f; 
+    // Add "Unknown" blobs (high entropy)
+    // Blob 1: Before wall
+    for(int y=70; y<90; ++y) {
+        for(int x=20; x<40; ++x) {
+            h_map[y*width + x] = 0.5f; 
         }
     }
-    // Add an obstacle/wall at x=50, with a small opening
+    // Blob 2: After wall
+    for(int y=10; y<30; ++y) {
+        for(int x=60; x<80; ++x) {
+            h_map[y*width + x] = 0.5f; 
+        }
+    }
+
+    // Wall at x=50
     for(int y=0; y<100; ++y) {
-        if (y < 45 || y > 55) {
+        if (y < 40 || y > 60) {
             h_map[y*width + 50] = 0.99f; 
         }
     }
@@ -124,7 +128,9 @@ void run_sim(float lambda_info, const std::string& prefix) {
     FSMICost cost;
     cost.map = d_grid_ptr;
     cost.lambda_info = config.lambda_info;
-    cost.sensor_range = 4.0f;
+    cost.sensor_range = 5.0f;
+    cost.goal = make_float3(9.0f, 5.0f, 0.0f);
+    cost.lambda_goal = 2.0f;
     
     if (lambda_info > 0) {
         save_info_gain_map(cost, width, height, 0.1f, prefix + "_map.csv");
@@ -133,23 +139,26 @@ void run_sim(float lambda_info, const std::string& prefix) {
     SimpleDynamics dyn;
     IMPPIController<SimpleDynamics, FSMICost> controller(config, dyn, cost);
 
+    // Reference trajectory: moving towards goal
     Eigen::VectorXf u_ref = Eigen::VectorXf::Zero(config.horizon * config.nu);
-    for(int t=0; t<config.horizon; ++t) u_ref[t*2+0] = 0.1f; 
     controller.set_reference_trajectory(u_ref);
 
     Eigen::VectorXf state = Eigen::VectorXf::Zero(4);
     state[0] = 1.0f; 
     state[1] = 5.0f; 
-    state[2] = 0.5f; 
+    state[2] = 0.0f; 
 
     std::ofstream fs(prefix + "_traj.csv");
     fs << "t,x,y,vx,vy\n";
 
-    for(int i=0; i<100; ++i) {
+    for(int i=0; i<150; ++i) {
         controller.compute(state);
         Eigen::VectorXf action = controller.get_action();
         fs << i*config.dt << "," << state[0] << "," << state[1] << "," << state[2] << "," << state[3] << "\n";
         dyn.step_host(state, action, config.dt);
+        
+        // Break if close to goal
+        if ((state.head(2) - Eigen::Vector2f(9, 5)).norm() < 0.2) break;
     }
 
     fs.close();
@@ -158,11 +167,11 @@ void run_sim(float lambda_info, const std::string& prefix) {
 }
 
 int main() {
-    std::cout << "Running Standard Simulation..." << std::endl;
+    std::cout << "Running Standard Simulation (lambda_info = 0)..." << std::endl;
     run_sim(0.0f, "std");
     
-    std::cout << "Running Informative Simulation..." << std::endl;
-    run_sim(50.0f, "info");
+    std::cout << "Running Informative Simulation (lambda_info = 100)..." << std::endl;
+    run_sim(100.0f, "info");
     
     return 0;
 }

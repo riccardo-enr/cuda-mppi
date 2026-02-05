@@ -11,6 +11,8 @@ struct FSMICost {
     const OccupancyGrid* map; // Device pointer to map struct
     float lambda_info;        // Information gain weight
     float sensor_range;       // Max range in meters
+    float3 goal;              // Target goal
+    float lambda_goal;        // Goal weight
     
     // Additional parameters for dynamics/collision can be added.
     
@@ -21,7 +23,12 @@ struct FSMICost {
         // Assuming nu=2 (v, w)
         cost += 0.1f * (u[0]*u[0] + u[1]*u[1]);
 
-        // 2. Information Reward (FSMI)
+        // 2. Goal Cost
+        float dx_g = x[0] - goal.x;
+        float dy_g = x[1] - goal.y;
+        cost += lambda_goal * (dx_g*dx_g + dy_g*dy_g);
+
+        // 3. Information Reward (FSMI)
         if (map == nullptr) return cost;
 
         // Robot State: Assuming standard 2D/3D state vector

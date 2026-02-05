@@ -129,9 +129,12 @@ The I-MPPI controller is implemented in CUDA, leveraging parallel rollouts to ev
 
 ## Exploration Campaign
 
-To verify the effectiveness of the informative reward, we conducted a simulation campaign in a "corridor with a hole" scenario. The robot starts at (1, 5) and is tasked with moving forward. 
+To verify the effectiveness of the informative reward, we conducted a simulation campaign in a "corridor with a hole" scenario. Both controllers are tasked with reaching a common goal at $(9, 5)$. The map contains two high-entropy "unknown" zones located away from the direct path.
 
-![I-MPPI Exploration Campaign. The heatmap (Plasma) shows the Information Gain field. Cyan lines indicate the true wall locations. The Standard MPPI (black dashed) remains in the safe corridor, while the Informative MPPI (white solid) proactively explores the high-entropy region through the gap.](../_media/imppi_campaign.png)
+- **Standard MPPI**: Simply moves towards the target, ignoring the high-entropy regions.
+- **Informative MPPI**: Proactively deviates from the shortest path to explore the unknown areas, gathering information before proceeding to the goal.
+
+![I-MPPI Exploration Campaign. The heatmap (Plasma) shows the Information Gain field. Cyan lines indicate the true wall locations. The Standard MPPI (black dashed) takes the direct route, while the Informative MPPI (white solid) seeks out informative viewpoints in the unknown blobs at the top-left and bottom-right.](../_media/imppi_campaign.png)
 
 ### Performance Comparison
 
