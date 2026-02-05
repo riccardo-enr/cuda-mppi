@@ -6,6 +6,13 @@ title: "cuda-mppi"
 
 **cuda-mppi** is a high-performance, GPU-accelerated library for Model Predictive Path Integral (MPPI) control. It provides a flexible C++ core with Python bindings, designed to serve as the backend for advanced autonomous navigation and control research.
 
+::: {.callout-warning "Important"}
+## Developement
+
+This repository is currently in active development. It should not be used for production purposes.
+
+:::
+
 ## Key Features
 
 *   **Speed**: Pure CUDA implementation capable of evaluating thousands of trajectories in parallel at hundreds of Hz.
