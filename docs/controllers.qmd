@@ -1,0 +1,114 @@
+---
+title: "Reactive MPPI Controllers: Theory & Variants"
+format:
+  html:
+    math: true
+---
+
+# Introduction to Path Integral Control
+
+Model Predictive Path Integral (MPPI) control is a class of sampling-based algorithms rooted in the duality between **Stochastic Optimal Control** and **Statistical Mechanics**. Unlike gradient-based methods (e.g., iLQR), MPPI does not require differentiability of the dynamics or cost function, making it robust for complex, discontinuous environments (e.g., collision avoidance).
+
+The core idea is to solve the optimal control problem by simulating thousands of random trajectories (rollouts) and computing a weighted average of the applied perturbations. The weights are derived from the **Feynman-Kac formula**, relating the optimal value function to the free energy of the system.
+
+## The Information-Theoretic Basis
+
+Consider the stochastic dynamical system:
+$$ dx = f(x, t)dt + G(x, t)u dt + G(x, t)\Sigma^{1/2} d\omega $$
+where $d\omega$ is Brownian motion. The objective is to minimize the expectation of a cost functional:
+$$ J(u) = \mathbb{E} \left[ \phi(x_T) + \int_{t_0}^{T} \left( q(x, t) + \frac{1}{2} u^T R u \right) dt \right] $$
+
+By defining the optimal control $u^*$, the problem can be transformed into minimizing the **Kullback-Leibler (KL) Divergence** between the controlled distribution of trajectories $\mathbb{P}_u$ and the optimal distribution $\mathbb{P}^*$.
+
+The optimal control update law is given by the importance-sampling weighted average:
+$$ u^*(t) = u_{nom}(t) + \frac{\sum_{k=1}^K w_k \epsilon_k(t)}{\sum_{k=1}^K w_k} $$
+
+where the weights $w_k$ follow the Boltzmann distribution:
+$$ w_k = \exp\left(-\frac{1}{\lambda} \left( S(\tau_k) - \rho \right) \right) $$
+
+*   $S(\tau_k)$: The total cost of the $k$-th rollout.
+*   $\lambda$: Temperature parameter (inverse sensitivity).
+*   $\epsilon_k$: The sampled noise/perturbation.
+
+---
+
+# 1. Standard MPPI
+
+The standard formulation assumes that the control inputs are independent across time steps and dimensions.
+
+### Theory
+The exploration noise is modeled as independent and identically distributed (i.i.d.) Gaussian noise:
+$$ u_k(t) \sim \mathcal{N}(u_{nom}(t), \Sigma) $$
+This corresponds to "white noise" exploration. The control authority is directly updated based on the instantaneous correlation between the noise and the trajectory cost.
+
+### Algorithm
+1.  **Sample**: Generate $K$ sequences of noise $\epsilon_k \sim \mathcal{N}(0, \Sigma)$.
+2.  **Rollout**: Propagate dynamics $x_{t+1} = f(x_t, u_{nom, t} + \epsilon_{k, t})$.
+3.  **Evaluate**: Compute cost $J_k$.
+4.  **Reweight**: Compute $w_k \propto \exp(-J_k / \lambda)$.
+5.  **Update**: $u_{nom} \leftarrow u_{nom} + \sum w_k \epsilon_k$.
+
+### Characteristics
+*   **Pros**: Computationally cheapest; Maximum high-frequency exploration.
+*   **Cons**: Resulting trajectories can be jagged/noisy ("bang-bang" behavior) if $\lambda$ is low, which is undesirable for mechanical actuators.
+
+---
+
+# 2. Smooth MPPI (SMPPI)
+
+For robotic systems, high-frequency control oscillation causes wear and instability. Smooth MPPI (SMPPI) enforces continuity by lifting the optimization into the **velocity** space of the control.
+
+### Theory
+Instead of optimizing the control $u$ directly, we define an auxiliary control variable $v$ (control velocity) such that:
+$$ \dot{u} = v $$
+The discrete-time update becomes an integration step:
+$$ u_{t+1} = u_t + v_t \Delta t $$
+
+The cost function is augmented to penalize rapid changes in control:
+$$ J_{smooth} = J_{base} + \gamma \sum_{t=0}^{T-1} \| u_{t+1} - u_{t} \|^2 $$
+
+### Algorithm
+1.  **Sample**: Generate perturbations in velocity space $\delta v_k \sim \mathcal{N}(0, \Sigma_v)$.
+2.  **Integrate**: Compute control sequence $u_{k, t} = u_{nom, t} + \sum_{i=0}^t \delta v_{k, i} \Delta t$.
+3.  **Rollout & Evaluate**: As in standard MPPI.
+4.  **Update**: The weighted update is applied to the *velocity* sequence, which is then re-integrated to form the new nominal control.
+
+### Characteristics
+*   **Pros**: Produces $C^1$ continuous control signals; naturally handles actuator limits.
+*   **Cons**: The "inertia" in the control signal can make the system slower to react to sudden obstacles.
+
+---
+
+# 3. Kernel MPPI (KMPPI)
+
+Kernel MPPI (also known as Tubal MPPI or Structured Noise MPPI) addresses the smoothness problem from a probabilistic perspective. Instead of white noise, it samples **colored noise** from a Gaussian Process (GP).
+
+### Theory
+We assume the perturbations $\epsilon(t)$ lie in a Reproducing Kernel Hilbert Space (RKHS) defined by a kernel function $k(t, t')$. Common choices include the Radial Basis Function (RBF) (Squared Exponential):
+$$ k(t_i, t_j) = \sigma_f^2 \exp\left( -\frac{(t_i - t_j)^2}{2l^2} \right) $$
+This kernel implies that perturbations at time $t$ are highly correlated with perturbations at $t'$.
+
+### Implementation (The "Support Point" Method)
+Sampling directly from a high-dimensional GP ($T \times N_u$) is expensive ($O(T^3)$). KMPPI uses a low-rank approximation:
+1.  **Support Points**: Define $M \ll T$ anchor points (knots) in time.
+2.  **Sampling**: Sample noise $\theta \in \mathbb{R}^{M}$ at these knots.
+3.  **Interpolation**: Compute the dense noise sequence $\epsilon \in \mathbb{R}^T$ via the kernel interaction matrix $W$:
+    $$ \epsilon = W \theta $$
+    where $W = K_{TM} K_{MM}^{-1}$.
+
+### Characteristics
+*   **Pros**:
+    *   **smoothness**: Guaranteed by the kernel bandwidth $l$.
+    *   **Efficiency**: Reduces the dimensionality of the search space from $T \cdot N_u$ to $M \cdot N_u$.
+*   **Cons**: Requires tuning of kernel hyperparameters ($l, \sigma_f$); slightly higher initialization cost for matrix $W$.
+
+---
+
+# Summary Comparison
+
+| Feature | Standard MPPI | Smooth MPPI | Kernel MPPI |
+| :--- | :--- | :--- | :--- |
+| **Control Variable** | $u$ (Direct) | $\Delta u$ (Velocity) | $\epsilon = W\theta$ (Latent) |
+| **Noise Profile** | White (Uncorrelated) | Integrated (Brownian) | Colored (GP/RBF) |
+| **Smoothness** | Low (Jagged) | High (Integrated) | High (Spectral) |
+| **Best For** | Abstract Dynamics, Simulation | Real Hardware, Actuators | High-Dim Systems, Flight |

@@ -35,3 +35,7 @@ test-py:
 
 # Run all tests
 test: test-cpp test-py
+
+# Documentation
+quarto-doc:
+    uv run quarto preview docs

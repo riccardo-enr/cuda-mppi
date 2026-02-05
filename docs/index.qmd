@@ -1,0 +1,26 @@
+---
+title: "cuda-mppi"
+---
+
+# Overview
+
+Documentation for the CUDA-accelerated MPPI project.
+
+## Documentation
+
+### Reactive Controllers (Tracking)
+*   [Theoretical Overview & Variants](controllers.qmd)
+    *   Standard MPPI
+    *   Smooth MPPI (SMPPI)
+    *   Kernel MPPI (KMPPI)
+
+### Planners / Exploration
+*   [Informative MPPI (I-MPPI)](i_mppi.qmd)
+
+## Quick start
+
+Render locally:
+
+```bash
+uv run quarto render docs
+```

@@ -1,0 +1,17 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "cuda-mppi"
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "Plans"
+        href: plan/index.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
