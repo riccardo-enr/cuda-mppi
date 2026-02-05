@@ -138,7 +138,8 @@ public:
             d_noise_vel_,
             d_weights_,
             config_.num_samples,
-            num_params 
+            num_params,
+            1.0f 
         );
 
         // Update action_sequence (integrate new u_vel)

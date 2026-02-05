@@ -165,7 +165,8 @@ public:
             d_noise_theta_,
             d_weights_,
             config_.num_samples,
-            num_params 
+            num_params,
+            1.0f 
         );
 
         // 6. Update U_nom (interpolate new theta)

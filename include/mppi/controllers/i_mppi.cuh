@@ -60,6 +60,11 @@ public:
                                 cudaMemcpyHostToDevice));
     }
 
+    void update_cost_params(float3 goal, float lambda_goal) {
+        this->cost_.goal = goal;
+        this->cost_.lambda_goal = lambda_goal;
+    }
+
     // Override compute to include biased sampling
     void compute(const Eigen::VectorXf& state) {
         // 1. Copy state to device
