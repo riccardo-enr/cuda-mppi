@@ -134,7 +134,7 @@ To verify the effectiveness of the informative reward, we conducted a simulation
 - **Standard MPPI**: Simply moves towards the target, ignoring the high-entropy regions.
 - **Informative MPPI**: Proactively deviates from the shortest path to explore the unknown areas, gathering information before proceeding to the goal.
 
-![I-MPPI Exploration Campaign. The heatmap (Plasma) shows the Information Gain field. Cyan lines indicate the true wall locations. The Standard MPPI (black dashed) takes the direct route, while the Informative MPPI (white solid) seeks out informative viewpoints in the unknown blobs at the top-left and bottom-right.](../_media/imppi_campaign.png)
+![I-MPPI Exploration Campaign. The heatmap shows the cost field (darker is better). The **Gold Star** is the common goal. **Yellow Rectangles** denote high-interest (unknown) zones. The **Cyan Lines** represent walls. Standard MPPI (black dashed) goes direct, while Informative MPPI (white solid) deviates to explore both blobs before reaching the goal.](../_media/imppi_campaign.png)
 
 ### Performance Comparison
 
