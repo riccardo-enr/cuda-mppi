@@ -15,19 +15,19 @@ title: "cuda-mppi"
 
 ## Documentation Structure
 
-### [Getting Started](getting_started.qmd)
+### [Getting Started](intro/getting_started.qmd)
 Installation instructions for C++ standalone usage and Python integration.
 
-### [Core Concepts](architecture.qmd)
-Understanding the architecture, memory model, and [JIT Compilation](jit.qmd).
+### [Core Concepts](core/architecture.qmd)
+Understanding the architecture, memory model, and [JIT Compilation](core/jit.qmd).
 
-### [Controllers](controllers.qmd)
+### [Controllers](controllers/controllers.qmd)
 Detailed theoretical derivation and usage of the reactive tracking controllers.
 
-### [Planners](i_mppi.qmd)
+### [Planners](controllers/i_mppi.qmd)
 Documentation for the Informative-MPPI (I-MPPI) exploration planner.
 
-### [API Reference](python_api.qmd)
+### [API Reference](api/python_api.qmd)
 Python API documentation for `cuda_mppi`.
 
 ## License

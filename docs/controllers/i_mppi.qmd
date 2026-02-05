@@ -69,6 +69,46 @@ $$ I \approx \sum_{j=0}^{n} P(e_j) \frac{D_{j+H} - D_{j-H-1}}{2H + 1} $$
 
 I-MPPI employs a three-layer GNC stack:
 
+```{mermaid}
+graph TD
+    subgraph L1 [Layer 1: Global Guidance - FUEL ~1 Hz]
+        FIS[Frontier Information Structure] --> TSP[TSP Solver]
+        TSP --> Waypoints[Global Waypoints]
+    end
+
+    subgraph L2 [Layer 2: Local Refinement ~5-10 Hz]
+        Waypoints --> VO[Viewpoint Optimization]
+        VO --> FSMI_Metric[FSMI Reward]
+        FSMI_Metric --> RefTraj[Informed Reference Trajectory τ_ref]
+    end
+
+    subgraph L3 [Layer 3: Reactive Control - Biased-MPPI ~50 Hz]
+        RefTraj --> Mixture[Mixture Sampling Distribution]
+        Mixture --> MPPI_Opt[Parallel CUDA Rollouts]
+        MPPI_Opt --> NomControl[Optimal Control u*]
+    end
+
+    subgraph L4 [Feedback Layer: Feedback-MPPI ≥ 200 Hz]
+        MPPI_Opt --> Sens[Sensitivity Analysis ∂u*/∂x₀]
+        Sens --> Gains[Feedback Gains F]
+        Gains --> FinalControl[Control Law: u* + FΔx]
+    end
+
+    %% Data Flow & Environment
+    Map[(Occupancy Grid)] -.-> FIS
+    Map -.-> FSMI_Metric
+    State[UAV State x₀] --> L3
+    State --> L4
+    FinalControl --> Actuators[/Motor Commands/]
+
+    %% Styling
+    style L1 fill:#e1f5fe,stroke:#01579b
+    style L2 fill:#e8f5e9,stroke:#1b5e20
+    style L3 fill:#fff3e0,stroke:#e65100
+    style L4 fill:#fce4ec,stroke:#880e4f
+    style Map fill:#f3e5f5,stroke:#4a148c
+```
+
 1.  **Layer 1: Global Guidance (FUEL)**: Maintains a Frontier Information Structure (FIS) and generates global waypoints via TSP.
 2.  **Layer 2: Local Refinement**: Refines global paths into an Informed Reference Trajectory $(\tau_{ref})$ maximizing info gain.
 3.  **Layer 3: Reactive Control (Biased-MPPI)**: Uses a mixture distribution:

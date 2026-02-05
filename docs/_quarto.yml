@@ -17,21 +17,21 @@ website:
       - section: "Introduction"
         contents:
           - index.qmd
-          - getting_started.qmd
+          - intro/getting_started.qmd
       - section: "Core Concepts"
         contents:
-          - architecture.qmd
-          - jit.qmd
+          - core/architecture.qmd
+          - core/jit.qmd
       - section: "Controllers"
         contents:
-          - controllers.qmd
-          - i_mppi.qmd
+          - controllers/controllers.qmd
+          - controllers/i_mppi.qmd
       - section: "API Reference"
         contents:
-          - python_api.qmd
+          - api/python_api.qmd
       - section: "Development"
         contents:
-          - development.qmd
+          - dev/development.qmd
 
 format:
   html:

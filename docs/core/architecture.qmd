@@ -20,7 +20,7 @@ The architecture revolves around three main concepts that the user must define (
 
 ### Class Diagram
 
-```mermaid
+```{mermaid}
 classDiagram
     class MPPIController~Dynamics, Cost~ {
         +compute(state)
@@ -28,18 +28,18 @@ classDiagram
         -rollout_kernel()
         -update_kernel()
     }
-    
+
     class Dynamics {
         <<Interface>>
         +step(x, u, x_next, dt)*
     }
-    
+
     class Cost {
         <<Interface>>
         +compute(x, u, t)*
         +terminal_cost(x)*
     }
-    
+
     MPPIController ..> Dynamics : Uses
     MPPIController ..> Cost : Uses
 ```
@@ -64,13 +64,13 @@ The heart of the library is the `rollout_kernel` (in `include/mppi/core/kernels.
 for (int t = 0; t < Horizon; ++t) {
     // 1. Compute Control
     float u_val = u_nom[t] + noise[k, t];
-    
+
     // 2. Step Dynamics (Inlined)
     dynamics.step(x_curr, u_val, x_next, dt);
-    
+
     // 3. Accumulate Cost
     total_cost += cost.compute(x_curr, u_val);
-    
+
     // 4. Update Register State
     x_curr = x_next;
 }
