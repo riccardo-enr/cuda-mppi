@@ -45,8 +45,7 @@ __global__ void compute_info_gain_grid_kernel(
     float state[4] = {x_idx * resolution, y_idx * resolution, 0.0f, 0.0f};
     float u[2] = {0.0f, 0.0f};
     
-    // We want to visualize ONLY the info gain part if possible, 
-    // or the full cost. Let's do full cost but it might be dominated by goal.
+    // Total cost at this position
     output[y_idx * width + x_idx] = cost.compute(state, u, 0);
 }
 
@@ -76,12 +75,12 @@ void save_info_gain_map(FSMICost& cost, int width, int height, float resolution,
 void run_sim(float lambda_info, const std::string& prefix) {
     MPPIConfig config;
     config.num_samples = 1024;
-    config.horizon = 60;
+    config.horizon = 50;
     config.nx = 4;
     config.nu = 2;
     config.lambda = 0.1f;
     config.dt = 0.1f;
-    config.u_scale = 10.0f;
+    config.u_scale = 5.0f; // Max acceleration
     config.lambda_info = lambda_info;
     config.alpha = 0.1f;
 
@@ -91,15 +90,15 @@ void run_sim(float lambda_info, const std::string& prefix) {
     std::vector<float> h_map(size, 0.01f); // Mostly free
     
     // Add "Unknown" blobs (high entropy)
-    // Blob 1: Before wall
-    for(int y=70; y<90; ++y) {
-        for(int x=20; x<40; ++x) {
+    // Blob 1: Top-left area
+    for(int y=60; y<90; ++y) {
+        for(int x=10; x<40; ++x) {
             h_map[y*width + x] = 0.5f; 
         }
     }
-    // Blob 2: After wall
-    for(int y=10; y<30; ++y) {
-        for(int x=60; x<80; ++x) {
+    // Blob 2: Bottom-right area
+    for(int y=10; y<40; ++y) {
+        for(int x=60; x<90; ++x) {
             h_map[y*width + x] = 0.5f; 
         }
     }
@@ -128,9 +127,9 @@ void run_sim(float lambda_info, const std::string& prefix) {
     FSMICost cost;
     cost.map = d_grid_ptr;
     cost.lambda_info = config.lambda_info;
-    cost.sensor_range = 5.0f;
+    cost.sensor_range = 6.0f;
     cost.goal = make_float3(9.0f, 5.0f, 0.0f);
-    cost.lambda_goal = 2.0f;
+    cost.lambda_goal = 10.0f; // Stronger goal attraction
     
     if (lambda_info > 0) {
         save_info_gain_map(cost, width, height, 0.1f, prefix + "_map.csv");
@@ -139,8 +138,10 @@ void run_sim(float lambda_info, const std::string& prefix) {
     SimpleDynamics dyn;
     IMPPIController<SimpleDynamics, FSMICost> controller(config, dyn, cost);
 
-    // Reference trajectory: moving towards goal
+    // Reference trajectory: moving towards goal (biased samples)
     Eigen::VectorXf u_ref = Eigen::VectorXf::Zero(config.horizon * config.nu);
+    // Let's bias it towards the blobs to help exploration
+    // Note: IMPPI usually updates this reference from a higher layer
     controller.set_reference_trajectory(u_ref);
 
     Eigen::VectorXf state = Eigen::VectorXf::Zero(4);
@@ -151,11 +152,16 @@ void run_sim(float lambda_info, const std::string& prefix) {
     std::ofstream fs(prefix + "_traj.csv");
     fs << "t,x,y,vx,vy\n";
 
-    for(int i=0; i<150; ++i) {
+    for(int i=0; i<200; ++i) {
         controller.compute(state);
         Eigen::VectorXf action = controller.get_action();
+        
         fs << i*config.dt << "," << state[0] << "," << state[1] << "," << state[2] << "," << state[3] << "\n";
+        
         dyn.step_host(state, action, config.dt);
+        
+        // CRITICAL: Shift the nominal trajectory for warm-start!
+        controller.shift();
         
         // Break if close to goal
         if ((state.head(2) - Eigen::Vector2f(9, 5)).norm() < 0.2) break;
@@ -170,8 +176,8 @@ int main() {
     std::cout << "Running Standard Simulation (lambda_info = 0)..." << std::endl;
     run_sim(0.0f, "std");
     
-    std::cout << "Running Informative Simulation (lambda_info = 100)..." << std::endl;
-    run_sim(100.0f, "info");
+    std::cout << "Running Informative Simulation (lambda_info = 500)..." << std::endl;
+    run_sim(500.0f, "info");
     
     return 0;
 }
