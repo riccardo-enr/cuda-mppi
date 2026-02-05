@@ -135,8 +135,6 @@ To verify the effectiveness of the informative reward, we conducted a simulation
 
 The goal for the I-MPPI simulation is to verify the effectiveness of the implementation of layer 2 and layer 3 of the hierarchical architecture.
 
-
-
 A higher-level **FSMI-driven trajectory generator** should precede the I-MPPI module.
 - **Frequency**: Runs at a lower rate (1-5 Hz).
 - **Logic**:
