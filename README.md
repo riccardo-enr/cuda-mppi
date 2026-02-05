@@ -2,6 +2,8 @@
 
 CUDA-accelerated Model Predictive Path Integral (MPPI) control library.
 
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://riccardo-enr.github.io/cuda-mppi/)
+
 ## Overview
 
 This library provides high-performance CUDA implementations of MPPI and related sampling-based control algorithms:
