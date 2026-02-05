@@ -1,0 +1,361 @@
+[
+  {
+    "objectID": "intro/getting_started.html",
+    "href": "intro/getting_started.html",
+    "title": "Getting Started",
+    "section": "",
+    "text": "To build and use cuda-mppi, you need the following dependencies:\n\nOperating System: Linux (Ubuntu 20.04+ recommended)\nCUDA Toolkit: Version 11.0 or higher\nCMake: Version 3.18 or higher\nC++ Compiler: GCC 9+ or Clang 10+ (supporting C++17)\nPython: Version 3.8+ (for bindings)",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "Getting Started"
+    ]
+  },
+  {
+    "objectID": "intro/getting_started.html#standalone-c-build",
+    "href": "intro/getting_started.html#standalone-c-build",
+    "title": "Getting Started",
+    "section": "1. Standalone C++ Build",
+    "text": "1. Standalone C++ Build\nIf you want to use the library purely as a C++ dependency or run the provided tests:\n# Clone the repository\ngit clone https://github.com/riccardo-enr/cuda-mppi.git\ncd cuda-mppi\n\n# Create build directory\nmkdir build && cd build\n\n# Configure and Build\ncmake ..\nmake -j$(nproc)",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "Getting Started"
+    ]
+  },
+  {
+    "objectID": "intro/getting_started.html#python-bindings-via-jax_mppi",
+    "href": "intro/getting_started.html#python-bindings-via-jax_mppi",
+    "title": "Getting Started",
+    "section": "2. Python Bindings (via jax_mppi)",
+    "text": "2. Python Bindings (via jax_mppi)\nThis library is primarily designed to be the backend for the jax_mppi project. However, you can build the bindings locally:\n# Install dependencies\npip install nanobind scikit-build-core numpy\n\n# Build and install in editable mode\npip install -e .",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "Getting Started"
+    ]
+  },
+  {
+    "objectID": "controllers/controllers.html",
+    "href": "controllers/controllers.html",
+    "title": "Reactive MPPI Controllers: Theory & Variants",
+    "section": "",
+    "text": "Model Predictive Path Integral (MPPI) control is a class of sampling-based algorithms rooted in the duality between Stochastic Optimal Control and Statistical Mechanics. Unlike gradient-based methods (e.g., iLQR), MPPI does not require differentiability of the dynamics or cost function, making it robust for complex, discontinuous environments (e.g., collision avoidance).\nThe core idea is to solve the optimal control problem by simulating thousands of random trajectories (rollouts) and computing a weighted average of the applied perturbations. The weights are derived from the Feynman-Kac formula, relating the optimal value function to the free energy of the system.\n\n\nConsider the stochastic dynamical system: \\[ dx = f(x, t)dt + G(x, t)u dt + G(x, t)\\Sigma^{1/2} d\\omega \\] where \\(d\\omega\\) is Brownian motion. The objective is to minimize the expectation of a cost functional: \\[ J(u) = \\mathbb{E} \\left[ \\phi(x_T) + \\int_{t_0}^{T} \\left( q(x, t) + \\frac{1}{2} u^T R u \\right) dt \\right] \\]\nBy defining the optimal control \\(u^*\\), the problem can be transformed into minimizing the Kullback-Leibler (KL) Divergence between the controlled distribution of trajectories \\(\\mathbb{P}_u\\) and the optimal distribution \\(\\mathbb{P}^*\\).\nThe optimal control update law is given by the importance-sampling weighted average: \\[ u^*(t) = u_{nom}(t) + \\frac{\\sum_{k=1}^K w_k \\epsilon_k(t)}{\\sum_{k=1}^K w_k} \\]\nwhere the weights \\(w_k\\) follow the Boltzmann distribution: \\[ w_k = \\exp\\left(-\\frac{1}{\\lambda} \\left( S(\\tau_k) - \\rho \\right) \\right) \\]\n\n\\(S(\\tau_k)\\): The total cost of the \\(k\\)-th rollout.\n\\(\\lambda\\): Temperature parameter (inverse sensitivity).\n\\(\\epsilon_k\\): The sampled noise/perturbation.",
+    "crumbs": [
+      "Home",
+      "Controllers",
+      "Reactive MPPI Controllers: Theory & Variants"
+    ]
+  },
+  {
+    "objectID": "controllers/controllers.html#the-information-theoretic-basis",
+    "href": "controllers/controllers.html#the-information-theoretic-basis",
+    "title": "Reactive MPPI Controllers: Theory & Variants",
+    "section": "",
+    "text": "Consider the stochastic dynamical system: \\[ dx = f(x, t)dt + G(x, t)u dt + G(x, t)\\Sigma^{1/2} d\\omega \\] where \\(d\\omega\\) is Brownian motion. The objective is to minimize the expectation of a cost functional: \\[ J(u) = \\mathbb{E} \\left[ \\phi(x_T) + \\int_{t_0}^{T} \\left( q(x, t) + \\frac{1}{2} u^T R u \\right) dt \\right] \\]\nBy defining the optimal control \\(u^*\\), the problem can be transformed into minimizing the Kullback-Leibler (KL) Divergence between the controlled distribution of trajectories \\(\\mathbb{P}_u\\) and the optimal distribution \\(\\mathbb{P}^*\\).\nThe optimal control update law is given by the importance-sampling weighted average: \\[ u^*(t) = u_{nom}(t) + \\frac{\\sum_{k=1}^K w_k \\epsilon_k(t)}{\\sum_{k=1}^K w_k} \\]\nwhere the weights \\(w_k\\) follow the Boltzmann distribution: \\[ w_k = \\exp\\left(-\\frac{1}{\\lambda} \\left( S(\\tau_k) - \\rho \\right) \\right) \\]\n\n\\(S(\\tau_k)\\): The total cost of the \\(k\\)-th rollout.\n\\(\\lambda\\): Temperature parameter (inverse sensitivity).\n\\(\\epsilon_k\\): The sampled noise/perturbation.",
+    "crumbs": [
+      "Home",
+      "Controllers",
+      "Reactive MPPI Controllers: Theory & Variants"
+    ]
+  },
+  {
+    "objectID": "dev/development.html",
+    "href": "dev/development.html",
+    "title": "Development Guide",
+    "section": "",
+    "text": "Fork & Clone: Fork the repository and clone it locally.\nBranch: Create a feature branch (e.g., feat/new-dynamics).\nImplement: Add your code (see below for adding dynamics).\nTest: Run existing tests and add new ones.\nPR: Submit a Pull Request.",
+    "crumbs": [
+      "Home",
+      "Development",
+      "Development Guide"
+    ]
+  },
+  {
+    "objectID": "dev/development.html#c-tests",
+    "href": "dev/development.html#c-tests",
+    "title": "Development Guide",
+    "section": "C++ Tests",
+    "text": "C++ Tests\nLocated in src/. Built via CMake.\ncd build\ncmake ..\nmake\n./pendulum_test",
+    "crumbs": [
+      "Home",
+      "Development",
+      "Development Guide"
+    ]
+  },
+  {
+    "objectID": "dev/development.html#python-tests",
+    "href": "dev/development.html#python-tests",
+    "title": "Development Guide",
+    "section": "Python Tests",
+    "text": "Python Tests\nLocated in tests/. Run with pytest.\npytest tests/",
+    "crumbs": [
+      "Home",
+      "Development",
+      "Development Guide"
+    ]
+  },
+  {
+    "objectID": "plan/index.html",
+    "href": "plan/index.html",
+    "title": "Plans",
+    "section": "",
+    "text": "Current plans:\n\nI-MPPI Development"
+  },
+  {
+    "objectID": "core/jit.html",
+    "href": "core/jit.html",
+    "title": "JIT Compilation",
+    "section": "",
+    "text": "One of the most powerful features of cuda-mppi is its support for Just-In-Time (JIT) Compilation of dynamics and cost functions. This allows users to define their system models in C++ strings (e.g., generated from symbolic libraries like SymPy) and compile them into optimized CUDA kernels at runtime.\nThis is powered by NVRTC (NVIDIA Runtime Compilation).",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "JIT Compilation"
+    ]
+  },
+  {
+    "objectID": "core/jit.html#dynamics-interface",
+    "href": "core/jit.html#dynamics-interface",
+    "title": "JIT Compilation",
+    "section": "1. Dynamics Interface",
+    "text": "1. Dynamics Interface\nYou must define a struct named UserDynamics.\nstruct UserDynamics {\n    // Constant parameters can be hardcoded or passed via constructor/members \n    // (if supported by your generation pipeline).\n    \n    __device__ void step(const float* x, const float* u, float* x_next, float dt) const {\n        // x: [x, y, theta, v]\n        // u: [v_cmd, w_cmd]\n        \n        float v = x[3];\n        float theta = x[2];\n        \n        x_next[0] = x[0] + v * cosf(theta) * dt;\n        x_next[1] = x[1] + v * sinf(theta) * dt;\n        x_next[2] = x[2] + u[1] * dt;\n        x_next[3] = x[3] + (u[0] - v) * dt; // Simple P-control on velocity\n    }\n};",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "JIT Compilation"
+    ]
+  },
+  {
+    "objectID": "core/jit.html#cost-interface",
+    "href": "core/jit.html#cost-interface",
+    "title": "JIT Compilation",
+    "section": "2. Cost Interface",
+    "text": "2. Cost Interface\nYou must define a struct named UserCost.\nstruct UserCost {\n    __device__ float compute(const float* x, const float* u, int t) const {\n        float cost = 0.0f;\n        // Penalize control effort\n        cost += 0.1f * (u[0]*u[0] + u[1]*u[1]);\n        // Penalize deviation from origin\n        cost += 1.0f * (x[0]*x[0] + x[1]*x[1]);\n        return cost;\n    }\n    \n    __device__ float terminal_cost(const float* x) const {\n        return 10.0f * (x[0]*x[0] + x[1]*x[1]);\n    }\n};",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "JIT Compilation"
+    ]
+  },
+  {
+    "objectID": "core/architecture.html",
+    "href": "core/architecture.html",
+    "title": "Architecture",
+    "section": "",
+    "text": "cuda-mppi is built for maximum throughput and minimal latency. To achieve this, we avoid virtual function calls and dynamic memory allocation inside the control loop. Instead, we rely on C++ Templates and Static Polymorphism.\n\n\nThe architecture revolves around three main concepts that the user must define (or generate via JIT):\n\nDynamics: Defines how the system state evolves \\(x_{t+1} = f(x_t, u_t)\\).\nCost: Defines the immediate and terminal cost of trajectories \\(J = \\sum c(x, u) + \\phi(x_T)\\).\nController: The MPPI solver that orchestrates sampling and optimization.\n\n\n\n\n\n\n\n\nclassDiagram\n    class MPPIController~Dynamics, Cost~ {\n        +compute(state)\n        +get_action()\n        -rollout_kernel()\n        -update_kernel()\n    }\n\n    class Dynamics {\n        &lt;&lt;Interface&gt;&gt;\n        +step(x, u, x_next, dt)*\n    }\n\n    class Cost {\n        &lt;&lt;Interface&gt;&gt;\n        +compute(x, u, t)*\n        +terminal_cost(x)*\n    }\n\n    MPPIController ..&gt; Dynamics : Uses\n    MPPIController ..&gt; Cost : Uses\n\n\n\n\n\n\n\n\n\n\nAll heavy memory allocations (rollout buffers, noise arrays) are performed once during the controller’s initialization (constructor).\n\nDevice Memory: Allocated via cudaMalloc and held for the lifetime of the controller.\nHost Memory: Minimal host memory is used, primarily for copying the initial state and retrieving the optimal action.\n\n\n\n\nThe heart of the library is the rollout_kernel (in include/mppi/core/kernels.cuh).\n\nParallelism: One CUDA thread handles one complete trajectory sample (or a small group of samples).\nRegister Usage: State variables are kept in registers (float x[NX]) to minimize global memory access during the integration loop.\nShared Memory: Not heavily used for standard rollouts to maximize occupancy, but utilized in KMPPI for kernel matrix operations.\n\n// Simplified Kernel Logic\nfor (int t = 0; t &lt; Horizon; ++t) {\n    // 1. Compute Control\n    float u_val = u_nom[t] + noise[k, t];\n\n    // 2. Step Dynamics (Inlined)\n    dynamics.step(x_curr, u_val, x_next, dt);\n\n    // 3. Accumulate Cost\n    total_cost += cost.compute(x_curr, u_val);\n\n    // 4. Update Register State\n    x_curr = x_next;\n}",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "Architecture"
+    ]
+  },
+  {
+    "objectID": "core/architecture.html#core-components",
+    "href": "core/architecture.html#core-components",
+    "title": "Architecture",
+    "section": "",
+    "text": "The architecture revolves around three main concepts that the user must define (or generate via JIT):\n\nDynamics: Defines how the system state evolves \\(x_{t+1} = f(x_t, u_t)\\).\nCost: Defines the immediate and terminal cost of trajectories \\(J = \\sum c(x, u) + \\phi(x_T)\\).\nController: The MPPI solver that orchestrates sampling and optimization.\n\n\n\n\n\n\n\n\nclassDiagram\n    class MPPIController~Dynamics, Cost~ {\n        +compute(state)\n        +get_action()\n        -rollout_kernel()\n        -update_kernel()\n    }\n\n    class Dynamics {\n        &lt;&lt;Interface&gt;&gt;\n        +step(x, u, x_next, dt)*\n    }\n\n    class Cost {\n        &lt;&lt;Interface&gt;&gt;\n        +compute(x, u, t)*\n        +terminal_cost(x)*\n    }\n\n    MPPIController ..&gt; Dynamics : Uses\n    MPPIController ..&gt; Cost : Uses",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "Architecture"
+    ]
+  },
+  {
+    "objectID": "core/architecture.html#memory-management",
+    "href": "core/architecture.html#memory-management",
+    "title": "Architecture",
+    "section": "",
+    "text": "All heavy memory allocations (rollout buffers, noise arrays) are performed once during the controller’s initialization (constructor).\n\nDevice Memory: Allocated via cudaMalloc and held for the lifetime of the controller.\nHost Memory: Minimal host memory is used, primarily for copying the initial state and retrieving the optimal action.",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "Architecture"
+    ]
+  },
+  {
+    "objectID": "core/architecture.html#rollout-kernel",
+    "href": "core/architecture.html#rollout-kernel",
+    "title": "Architecture",
+    "section": "",
+    "text": "The heart of the library is the rollout_kernel (in include/mppi/core/kernels.cuh).\n\nParallelism: One CUDA thread handles one complete trajectory sample (or a small group of samples).\nRegister Usage: State variables are kept in registers (float x[NX]) to minimize global memory access during the integration loop.\nShared Memory: Not heavily used for standard rollouts to maximize occupancy, but utilized in KMPPI for kernel matrix operations.\n\n// Simplified Kernel Logic\nfor (int t = 0; t &lt; Horizon; ++t) {\n    // 1. Compute Control\n    float u_val = u_nom[t] + noise[k, t];\n\n    // 2. Step Dynamics (Inlined)\n    dynamics.step(x_curr, u_val, x_next, dt);\n\n    // 3. Accumulate Cost\n    total_cost += cost.compute(x_curr, u_val);\n\n    // 4. Update Register State\n    x_curr = x_next;\n}",
+    "crumbs": [
+      "Home",
+      "Core Concepts",
+      "Architecture"
+    ]
+  },
+  {
+    "objectID": "plan/i_mppi_development.html",
+    "href": "plan/i_mppi_development.html",
+    "title": "Plan: I-MPPI (Informative MPPI) Development",
+    "section": "",
+    "text": "This plan outlines the steps for developing the i_mppi controller variant in the cuda-mppi library, based on the “Hierarchical Informative MPPI” framework.\n\n\nImplement IMPPIController, a controller that integrates: 1. Biased Sampling: A mixture distribution of samples centered around the previous solution and a global reference trajectory. 2. Information Cost: A cost term based on Fast Shannon Mutual Information (FSMI) to reward exploration.\n\n\n\n\n\n\nAnalyze /home/riccardo/phd/notes/delft/i_mppi_note.qmd.\nDefine strategy:\n\nBiased Sampling: Implemented by shifting the mean of the noise buffer for a subset of samples. \\(u = u_{nom} + \\epsilon\\), where \\(\\epsilon\\) is shifted such that effectively \\(u \\sim \\mathcal{N}(u_{ref}, \\Sigma)\\).\nFSMI Cost: A custom Cost functor that performs raycasting on a GPU-resident map (Occupancy Grid for MVP).\n\n\n\n\n\n\nCreate development branch feat/i-mppi.\nCreate development folder i_mppi/.\nInitialize include/mppi/controllers/i_mppi.cuh.\n\n\n\n\n\nConfig: Add alpha (bias ratio), lambda_info (info gain weight) to MPPIConfig (or a subclass).\nMap Representation: Create a simple OccupancyGrid CUDA struct in include/mppi/core/map.cuh (new file) to support raycasting.\nFSMI Cost: Implement FSMICost in include/mppi/instantiations/fsmi_cost.cuh.\n\nImplement raycast and compute_info_gain device functions.\n\nController: Implement IMPPIController in include/mppi/controllers/i_mppi.cuh.\n\nManage u_ref (reference trajectory).\nImplement shift_noise_means kernel/function to apply bias.\n\n\n\n\n\n\nCreate a standalone test in src/i_mppi_test.cu.\n\nSetup a mock map (e.g., a wall with a hole or a simple room).\nVerify that the controller is attracted to unknown areas.\n\nBenchmark performance of the raycasting kernel. (Implicitly verified functionality via test run)\n\n\n\n\n\nExpose new classes to Python bindings if needed (low priority for CLI task, focus on C++ core).\nCleanup.\n\n\n\n\n\n\n2026-02-05: Updated plan with specific I-MPPI details.\n2026-02-05: Implemented IMPPIController, FSMICost, OccupancyGrid and verified with i_mppi_test."
+  },
+  {
+    "objectID": "plan/i_mppi_development.html#goal",
+    "href": "plan/i_mppi_development.html#goal",
+    "title": "Plan: I-MPPI (Informative MPPI) Development",
+    "section": "",
+    "text": "Implement IMPPIController, a controller that integrates: 1. Biased Sampling: A mixture distribution of samples centered around the previous solution and a global reference trajectory. 2. Information Cost: A cost term based on Fast Shannon Mutual Information (FSMI) to reward exploration."
+  },
+  {
+    "objectID": "plan/i_mppi_development.html#steps",
+    "href": "plan/i_mppi_development.html#steps",
+    "title": "Plan: I-MPPI (Informative MPPI) Development",
+    "section": "",
+    "text": "Analyze /home/riccardo/phd/notes/delft/i_mppi_note.qmd.\nDefine strategy:\n\nBiased Sampling: Implemented by shifting the mean of the noise buffer for a subset of samples. \\(u = u_{nom} + \\epsilon\\), where \\(\\epsilon\\) is shifted such that effectively \\(u \\sim \\mathcal{N}(u_{ref}, \\Sigma)\\).\nFSMI Cost: A custom Cost functor that performs raycasting on a GPU-resident map (Occupancy Grid for MVP).\n\n\n\n\n\n\nCreate development branch feat/i-mppi.\nCreate development folder i_mppi/.\nInitialize include/mppi/controllers/i_mppi.cuh.\n\n\n\n\n\nConfig: Add alpha (bias ratio), lambda_info (info gain weight) to MPPIConfig (or a subclass).\nMap Representation: Create a simple OccupancyGrid CUDA struct in include/mppi/core/map.cuh (new file) to support raycasting.\nFSMI Cost: Implement FSMICost in include/mppi/instantiations/fsmi_cost.cuh.\n\nImplement raycast and compute_info_gain device functions.\n\nController: Implement IMPPIController in include/mppi/controllers/i_mppi.cuh.\n\nManage u_ref (reference trajectory).\nImplement shift_noise_means kernel/function to apply bias.\n\n\n\n\n\n\nCreate a standalone test in src/i_mppi_test.cu.\n\nSetup a mock map (e.g., a wall with a hole or a simple room).\nVerify that the controller is attracted to unknown areas.\n\nBenchmark performance of the raycasting kernel. (Implicitly verified functionality via test run)\n\n\n\n\n\nExpose new classes to Python bindings if needed (low priority for CLI task, focus on C++ core).\nCleanup."
+  },
+  {
+    "objectID": "plan/i_mppi_development.html#progress-tracking",
+    "href": "plan/i_mppi_development.html#progress-tracking",
+    "title": "Plan: I-MPPI (Informative MPPI) Development",
+    "section": "",
+    "text": "2026-02-05: Updated plan with specific I-MPPI details.\n2026-02-05: Implemented IMPPIController, FSMICost, OccupancyGrid and verified with i_mppi_test."
+  },
+  {
+    "objectID": "api/python_api.html",
+    "href": "api/python_api.html",
+    "title": "Python API Reference",
+    "section": "",
+    "text": "The cuda_mppi module provides Python bindings for the core CUDA controllers.\n\n\n\n\nThe configuration struct for all controllers.\nclass MPPIConfig:\n    def __init__(self, \n                 num_samples: int, \n                 horizon: int, \n                 nx: int, \n                 nu: int, \n                 lambda_: float, \n                 dt: float, \n                 u_scale: float, \n                 w_action_seq_cost: float, \n                 num_support_pts: int):\n        ...\n\nnum_samples (\\(K\\)): Number of parallel rollouts.\nhorizon (\\(T\\)): Number of timesteps per rollout.\nnx: State dimension.\nnu: Control dimension.\nlambda_: Temperature parameter (inverse sensitivity).\ndt: Integration timestep (seconds).\nu_scale: Scaling factor for control inputs (or noise variance).\nw_action_seq_cost: Weight for smoothness cost (SMPPI).\nnum_support_pts: Number of knots for kernel approximation (KMPPI).\n\n\n\n\n\n\n\nA specialized controller for a 4D double integrator system (\\(x, y, v_x, v_y\\)).\nclass DoubleIntegratorMPPI:\n    def __init__(self, config: MPPIConfig):\n        ...\n    \n    def compute(self, state: numpy.ndarray) -&gt; None:\n        \"\"\"Compute the optimal control for the given state (async).\"\"\"\n    \n    def get_action(self) -&gt; numpy.ndarray:\n        \"\"\"Retrieve the first action of the optimal sequence.\"\"\"\n        \n    def shift(self) -&gt; None:\n        \"\"\"Shift the nominal trajectory forward by one step.\"\"\"\n\n\n\nThe generic controller that compiles user-defined dynamics/costs at runtime.\nclass JITMPPIController:\n    def __init__(self, \n                 config: MPPIConfig, \n                 dynamics_code: str, \n                 cost_code: str, \n                 include_paths: List[str]):\n        ...\n        \n    def compute(self, state: numpy.ndarray) -&gt; None: ...\n    def get_action(self) -&gt; numpy.ndarray: ...\n    def shift(self) -&gt; None: ...\n\n\n\n\nCurrently, the DoubleIntegratorMPPI and JITMPPIController are the primary classes exposed. Bindings for generalized SMPPI and KMPPI are present in the codebase but may require enabling in bindings/bindings.cu.",
+    "crumbs": [
+      "Home",
+      "API Reference",
+      "Python API Reference"
+    ]
+  },
+  {
+    "objectID": "api/python_api.html#configuration",
+    "href": "api/python_api.html#configuration",
+    "title": "Python API Reference",
+    "section": "",
+    "text": "The configuration struct for all controllers.\nclass MPPIConfig:\n    def __init__(self, \n                 num_samples: int, \n                 horizon: int, \n                 nx: int, \n                 nu: int, \n                 lambda_: float, \n                 dt: float, \n                 u_scale: float, \n                 w_action_seq_cost: float, \n                 num_support_pts: int):\n        ...\n\nnum_samples (\\(K\\)): Number of parallel rollouts.\nhorizon (\\(T\\)): Number of timesteps per rollout.\nnx: State dimension.\nnu: Control dimension.\nlambda_: Temperature parameter (inverse sensitivity).\ndt: Integration timestep (seconds).\nu_scale: Scaling factor for control inputs (or noise variance).\nw_action_seq_cost: Weight for smoothness cost (SMPPI).\nnum_support_pts: Number of knots for kernel approximation (KMPPI).",
+    "crumbs": [
+      "Home",
+      "API Reference",
+      "Python API Reference"
+    ]
+  },
+  {
+    "objectID": "api/python_api.html#controllers",
+    "href": "api/python_api.html#controllers",
+    "title": "Python API Reference",
+    "section": "",
+    "text": "A specialized controller for a 4D double integrator system (\\(x, y, v_x, v_y\\)).\nclass DoubleIntegratorMPPI:\n    def __init__(self, config: MPPIConfig):\n        ...\n    \n    def compute(self, state: numpy.ndarray) -&gt; None:\n        \"\"\"Compute the optimal control for the given state (async).\"\"\"\n    \n    def get_action(self) -&gt; numpy.ndarray:\n        \"\"\"Retrieve the first action of the optimal sequence.\"\"\"\n        \n    def shift(self) -&gt; None:\n        \"\"\"Shift the nominal trajectory forward by one step.\"\"\"\n\n\n\nThe generic controller that compiles user-defined dynamics/costs at runtime.\nclass JITMPPIController:\n    def __init__(self, \n                 config: MPPIConfig, \n                 dynamics_code: str, \n                 cost_code: str, \n                 include_paths: List[str]):\n        ...\n        \n    def compute(self, state: numpy.ndarray) -&gt; None: ...\n    def get_action(self) -&gt; numpy.ndarray: ...\n    def shift(self) -&gt; None: ...",
+    "crumbs": [
+      "Home",
+      "API Reference",
+      "Python API Reference"
+    ]
+  },
+  {
+    "objectID": "api/python_api.html#note-on-bindings",
+    "href": "api/python_api.html#note-on-bindings",
+    "title": "Python API Reference",
+    "section": "",
+    "text": "Currently, the DoubleIntegratorMPPI and JITMPPIController are the primary classes exposed. Bindings for generalized SMPPI and KMPPI are present in the codebase but may require enabling in bindings/bindings.cu.",
+    "crumbs": [
+      "Home",
+      "API Reference",
+      "Python API Reference"
+    ]
+  },
+  {
+    "objectID": "controllers/i_mppi.html",
+    "href": "controllers/i_mppi.html",
+    "title": "I-MPPI: Informative Model Predictive Path Integral",
+    "section": "",
+    "text": "The field of autonomous Unmanned Aerial Vehicle (UAV) exploration has transitioned from simple geometric coverage to complex, information-driven strategic maneuvers. In unstructured environments, a robot faces a fundamental duality: the global coverage problem (“where to go”) and the reactive control problem (“how to move safely”). Traditional approaches often decouple these modules, resulting in “myopic” local planners that fail to escape local minima of uncertainty, or deterministic global planners that produce coarse, “jagged” paths unsuitable for the high-speed, non-linear dynamics of agile flight.\nThis document describes the Hierarchical Informative Model Predictive Path Integral (I-MPPI) framework. This architecture synthesizes global strategic planning, analytical viewpoint refinement via Fast Shannon Mutual Information (FSMI), and reactive Biased-MPPI control with sensitivity-based feedback.\n\n\n\n\n\n\nNoteRepository Scope\n\n\n\nThe focus of this repository is the high-performance CUDA implementation of Layer 2 (Local Refinement) and Layer 3/4 (Reactive Control). The Global Planner (Layer 1), such as FUEL, is considered an external input that provides the mission context and global waypoints.",
+    "crumbs": [
+      "Home",
+      "Controllers",
+      "I-MPPI: Informative Model Predictive Path Integral"
+    ]
+  },
+  {
+    "objectID": "controllers/i_mppi.html#optimal-control-duality-free-energy",
+    "href": "controllers/i_mppi.html#optimal-control-duality-free-energy",
+    "title": "I-MPPI: Informative Model Predictive Path Integral",
+    "section": "Optimal Control Duality & Free Energy",
+    "text": "Optimal Control Duality & Free Energy\nThe mathematical derivation of the MPPI algorithm is rooted in the definition of the free energy of the dynamical system. The value function \\(V(x, t)\\) of a stochastic system can be linearized through a logarithmic transformation, leading to the Path Integral formulation. The Free Energy (\\(\\mathcal{F}\\)) of the dynamical system is defined as:\n\\[ \\mathcal{F}(x_0) = -\\lambda \\log \\mathbb{E}_{\\mathbb{P}} \\left[ \\exp \\left( -\\frac{1}{\\lambda} S(\\tau) \\right) \\right] \\]\n\n\\(\\tau\\): The state-control trajectory \\(\\{x_0, u_0, x_1, u_1, \\dots, x_T\\}\\).\n\\(\\mathbb{P}\\): The base distribution, representing the stochastic trajectories of the “passive” system.\n\\(S(\\tau)\\): The cumulative cost (Action) of a trajectory \\(\\tau\\).\n\\(\\lambda\\): The temperature parameter, representing the noise variance.\n\nThe “optimal trajectory” is the mean of the distribution \\(\\mathbb{Q}^*\\) that minimizes the KL-divergence to the distribution of “low-cost” paths, leading to the thermodynamic weight update rule:\n\\[ \\omega^k = \\frac{\\exp\\left(-\\frac{1}{\\lambda}(J^k - \\rho)\\right)}{\\sum_{j=1}^{K} \\exp\\left(-\\frac{1}{\\lambda}(J^j - \\rho)\\right)} \\]",
+    "crumbs": [
+      "Home",
+      "Controllers",
+      "I-MPPI: Informative Model Predictive Path Integral"
+    ]
+  },
+  {
+    "objectID": "controllers/i_mppi.html#shannon-mutual-information",
+    "href": "controllers/i_mppi.html#shannon-mutual-information",
+    "title": "I-MPPI: Informative Model Predictive Path Integral",
+    "section": "Shannon Mutual Information",
+    "text": "Shannon Mutual Information\nThe informative reward is the Shannon Mutual Information (MI) between the map \\(M\\) and a future sensor measurement \\(Z\\): \\[ I(M; Z) = H(M) - H(M|Z) \\] where \\(H(M)\\) is the map entropy. High MI indicates regions of unknown space or uncertain areas.",
+    "crumbs": [
+      "Home",
+      "Controllers",
+      "I-MPPI: Informative Model Predictive Path Integral"
+    ]
+  },
+  {
+    "objectID": "controllers/i_mppi.html#fast-shannon-mutual-information-fsmi",
+    "href": "controllers/i_mppi.html#fast-shannon-mutual-information-fsmi",
+    "title": "I-MPPI: Informative Model Predictive Path Integral",
+    "section": "Fast Shannon Mutual Information (FSMI)",
+    "text": "Fast Shannon Mutual Information (FSMI)\nComputing Shannon MI analytically for a sensor beam involves:\n\nRaycasting: Cast a ray intersecting \\(n\\) cells with occupancy \\(o_i\\).\nVisibility (\\(P(e_j)\\)): Probability that the beam reaches cell \\(j\\): \\[ P(e_j) = o_j \\prod_{k=1}^{j-1} (1 - o_k) \\]\nInformation Density (\\(C_k\\)): Cumulative info gain based on inverse sensor model.\nAnalytic Summation: \\[ I_{FSMI} = \\sum_{j=0}^{n} \\sum_{k=1}^{n} P(e_j) C_k G_{k,j} \\]\n\nThe Uniform-FSMI variant simplifies this to \\(O(n)\\) complexity: \\[ I \\approx \\sum_{j=0}^{n} P(e_j) \\frac{D_{j+H} - D_{j-H-1}}{2H + 1} \\]",
+    "crumbs": [
+      "Home",
+      "Controllers",
+      "I-MPPI: Informative Model Predictive Path Integral"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "cuda-mppi",
+    "section": "",
+    "text": "cuda-mppi is a high-performance, GPU-accelerated library for Model Predictive Path Integral (MPPI) control. It provides a flexible C++ core with Python bindings, designed to serve as the backend for advanced autonomous navigation and control research.\n\n\n\nSpeed: Pure CUDA implementation capable of evaluating thousands of trajectories in parallel at hundreds of Hz.\nFlexibility: Template-based architecture allows for zero-overhead swapping of Dynamics and Cost functions.\nJIT Compilation: Define your system model in Python/C++ strings and compile optimized kernels at runtime using NVRTC.\nVariants: Includes Standard MPPI, Smooth MPPI (SMPPI), Kernel MPPI (KMPPI), and Informative MPPI (I-MPPI).\n\n\n\n\n\n\nInstallation instructions for C++ standalone usage and Python integration.\n\n\n\nUnderstanding the architecture, memory model, and JIT Compilation.\n\n\n\nDetailed theoretical derivation and usage of the reactive tracking controllers.\n\n\n\nDocumentation for the Informative-MPPI (I-MPPI) exploration planner.\n\n\n\nPython API documentation for cuda_mppi.\n\n\n\n\nMIT License.",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "cuda-mppi"
+    ]
+  },
+  {
+    "objectID": "index.html#key-features",
+    "href": "index.html#key-features",
+    "title": "cuda-mppi",
+    "section": "",
+    "text": "Speed: Pure CUDA implementation capable of evaluating thousands of trajectories in parallel at hundreds of Hz.\nFlexibility: Template-based architecture allows for zero-overhead swapping of Dynamics and Cost functions.\nJIT Compilation: Define your system model in Python/C++ strings and compile optimized kernels at runtime using NVRTC.\nVariants: Includes Standard MPPI, Smooth MPPI (SMPPI), Kernel MPPI (KMPPI), and Informative MPPI (I-MPPI).",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "cuda-mppi"
+    ]
+  },
+  {
+    "objectID": "index.html#documentation-structure",
+    "href": "index.html#documentation-structure",
+    "title": "cuda-mppi",
+    "section": "",
+    "text": "Installation instructions for C++ standalone usage and Python integration.\n\n\n\nUnderstanding the architecture, memory model, and JIT Compilation.\n\n\n\nDetailed theoretical derivation and usage of the reactive tracking controllers.\n\n\n\nDocumentation for the Informative-MPPI (I-MPPI) exploration planner.\n\n\n\nPython API documentation for cuda_mppi.",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "cuda-mppi"
+    ]
+  },
+  {
+    "objectID": "index.html#license",
+    "href": "index.html#license",
+    "title": "cuda-mppi",
+    "section": "",
+    "text": "MIT License.",
+    "crumbs": [
+      "Home",
+      "Introduction",
+      "cuda-mppi"
+    ]
+  }
+]
