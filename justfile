@@ -12,11 +12,22 @@ setup:
 # Build the C++ tests
 build-cpp:
     mkdir -p build
-    cd build && cmake .. -Dnanobind_DIR=$(uv run python -m nanobind --cmake_dir) -DPython_EXECUTABLE=$(which python3) && make pendulum_test
+    cd build && cmake .. -Dnanobind_DIR=$(uv run python -m nanobind --cmake_dir) -DPython_EXECUTABLE=$(which python3) && make pendulum_test i_mppi_sim
 
 # Run the C++ pendulum test
 test-cpp: build-cpp
     ./build/pendulum_test
+
+# Run I-MPPI Simulation
+run-i-mppi:
+    ./build/i_mppi_sim
+
+# Analyze exploration behavior
+analyze-exploration: build-cpp run-i-mppi
+    uv run scripts/analyze_exploration.py
+
+analyze-exploration-python:
+    uv run scripts/analyze_exploration.py
 
 # Clean build artifacts
 clean:
