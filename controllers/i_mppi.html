@@ -445,42 +445,20 @@ J(\tau) &amp;= \left[\phi(x_T) + \sum_{t=0}^{T-1} \mathcal{L}_{motion}(x_t, u_t)
 <p>The I-MPPI controller is implemented in CUDA, leveraging parallel rollouts to evaluate hundreds of trajectories simultaneously. The <code>FSMICost</code> functor performs real-time raycasting against a GPU-resident occupancy grid.</p>
 <section id="exploration-campaign" class="level2">
 <h2 class="anchored" data-anchor-id="exploration-campaign">Exploration Campaign</h2>
-<p>To verify the effectiveness of the informative reward, we conducted a simulation campaign in a “corridor with a hole” scenario.</p>
+<p>To verify the effectiveness of the informative reward, we conducted a simulation campaign in a “corridor with a hole” scenario. Both controllers are tasked with reaching a common goal at <span class="math inline">\((9, 5)\)</span>. The map contains two high-entropy “unknown” zones located away from the direct path.</p>
+<ul>
+<li><strong>Standard MPPI</strong>: Simply moves towards the target, ignoring the high-entropy regions.</li>
+<li><strong>Informative MPPI</strong>: Proactively deviates from the shortest path to explore the unknown areas, gathering information before proceeding to the goal.</li>
+</ul>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="../_media/imppi_campaign.png" class="img-fluid figure-img"></p>
-<figcaption>I-MPPI Exploration Campaign. The heatmap shows the Informative Cost (lower is better, corresponding to high Information Gain). The Informative MPPI (red) proactively explores the unknown area behind the wall, while the Standard MPPI (white) simply follows the corridor.</figcaption>
+<figcaption>I-MPPI Exploration Campaign. The heatmap shows the cost field (darker is better). The <strong>Gold Star</strong> is the common goal. <strong>Yellow Rectangles</strong> denote high-interest (unknown) zones. The <strong>Cyan Lines</strong> represent walls. Standard MPPI (black dashed) goes direct, while Informative MPPI (white solid) deviates to explore both blobs before reaching the goal.</figcaption>
 </figure>
 </div>
 <section id="performance-comparison" class="level3">
 <h3 class="anchored" data-anchor-id="performance-comparison">Performance Comparison</h3>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Metric</th>
-<th>Standard MPPI</th>
-<th>Informative MPPI</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Information Gain (nats)</td>
-<td>Low</td>
-<td><strong>High</strong></td>
-</tr>
-<tr class="even">
-<td>Average Velocity</td>
-<td>Constrained</td>
-<td><strong>Agile</strong></td>
-</tr>
-<tr class="odd">
-<td>CUDA Latency (512 samples)</td>
-<td>~2ms</td>
-<td>~5ms</td>
-</tr>
-</tbody>
-</table>
-<p>The Informative MPPI demonstrates a clear bias towards high-entropy regions of the map, effectively “falling” into informative gravity wells as predicted by the theory.</p>
+<p>The Informative MPPI demonstrates a clear bias towards high-entropy regions of the map. By minimizing the Unified Cost Function, the controller naturally seeks out viewpoints that maximize sensor coverage of unknown space, effectively “falling” into informative gravity wells as predicted by the theory.</p>
 </section>
 </section>
 </section>
