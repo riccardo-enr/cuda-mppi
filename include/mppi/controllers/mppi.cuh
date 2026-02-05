@@ -164,6 +164,12 @@ public:
         return action;
     }
 
+    Eigen::VectorXf get_optimal_control_sequence() {
+        Eigen::VectorXf u_seq(config_.horizon * config_.nu);
+        HANDLE_ERROR(cudaMemcpy(u_seq.data(), d_u_nom_, config_.horizon * config_.nu * sizeof(float), cudaMemcpyDeviceToHost));
+        return u_seq;
+    }
+
 protected:
     MPPIConfig config_;
     Dynamics dynamics_;
