@@ -38,7 +38,7 @@ struct FSMICost {
         
         float rx = x[0];
         float ry = x[1];
-        float rz = 0.5f; // Fixed height
+        float rz = 0.0f; // Fixed height (0 for 2D map)
         
         float vx = x[2];
         float vy = x[3];

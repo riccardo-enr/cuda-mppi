@@ -15,34 +15,36 @@ def plot_everything():
     df_info = pd.read_csv(path + 'info_traj.csv')
     
     # Load map
-    # info_map.csv is a matrix
     map_data = np.loadtxt(path + 'info_map.csv', delimiter=',')
-    # The costs are lambda_info * IG + control_cost. 
-    # Since lambda_info=50, and total_info is subtracted, map_data is mostly negative.
-    # We want to visualize Information Gain, which is - (cost - control_cost) / lambda_info
-    # But for a quick heatmap, just plot the cost values.
     
     fig, ax = plt.subplots(figsize=(10, 8))
     
     # Heatmap of Info Gain (Cost)
     # Origin is (0,0), resolution 0.1, 100x100
-    im = ax.imshow(map_data, extent=[0, 10, 0, 10], origin='lower', cmap='viridis_r', alpha=0.6)
-    fig.colorbar(im, ax=ax, label='Informative Cost (lower is better)')
+    # Map data is (y, x) because of how it was saved in C++
+    im = ax.imshow(map_data, extent=[0, 10, 0, 10], origin='lower', cmap='plasma', alpha=0.8)
+    fig.colorbar(im, ax=ax, label='Informative Cost (Reward is negative)')
 
-    # Trajectories
-    ax.plot(df_std['x'], df_std['y'], 'w--', label='Standard MPPI', linewidth=2)
-    ax.plot(df_info['x'], df_info['y'], 'r-', label='Informative MPPI', linewidth=3)
-    
-    # Obstacles
+    # Obstacles (Ground Truth)
     # Wall at x=5, with opening at y=[4.5, 5.5]
-    ax.plot([5, 5], [0, 4.5], 'k-', linewidth=4)
-    ax.plot([5, 5], [5.5, 10], 'k-', linewidth=4)
+    ax.vlines(5.0, 0, 4.5, colors='cyan', linestyles='-', linewidth=5, label='Wall')
+    ax.vlines(5.0, 5.5, 10.0, colors='cyan', linestyles='-', linewidth=5)
+    
+    # Trajectories
+    ax.plot(df_std['x'], df_std['y'], 'k--', label='Standard MPPI', linewidth=2, alpha=0.7)
+    ax.plot(df_info['x'], df_info['y'], 'w-', label='Informative MPPI', linewidth=3)
+    
+    # Start point
+    ax.scatter(df_info['x'].iloc[0], df_info['y'].iloc[0], c='green', s=100, label='Start', zorder=5)
     
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
-    ax.set_title('I-MPPI Exploration Campaign')
-    ax.legend(loc='upper left')
-    ax.grid(True, alpha=0.3)
+    ax.set_title('I-MPPI: Information Gain Field and Trajectory Comparison')
+    ax.legend(loc='upper right', framealpha=1.0)
+    ax.grid(True, alpha=0.2)
+    
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
     
     output_path = 'docs/_media/imppi_campaign.png'
     plt.savefig(output_path)
