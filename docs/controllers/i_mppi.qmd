@@ -131,8 +131,24 @@ The I-MPPI controller is implemented in CUDA, leveraging parallel rollouts to ev
 
 To verify the effectiveness of the informative reward, we conducted a simulation campaign in a "corridor with a hole" scenario. Both controllers are tasked with reaching a common goal at $(9, 5)$. The map contains two high-entropy "unknown" zones located away from the direct path.
 
+### Hierarchical Architecture Specification
+
+The goal for the I-MPPI simulation is to verify the effectiveness of the implementation of layer 2 and layer 3 of the hierarchical architecture.
+
+
+
+A higher-level **FSMI-driven trajectory generator** should precede the I-MPPI module.
+- **Frequency**: Runs at a lower rate (1-5 Hz).
+- **Logic**:
+    1.  **Explore Area 1**: Prioritize regions with high information interest and lower dynamical cost.
+    2.  **Transition**: As Area 1 is explored, its information value drops to zero.
+    3.  **Explore Area 2**: Move to the next area of interest.
+    4.  **Drive to Goal**: When information cost is depleted, drive to the goal minimizing only the dynamical cost.
+
 - **Standard MPPI**: Simply moves towards the target, ignoring the high-entropy regions.
 - **Informative MPPI**: Proactively deviates from the shortest path to explore the unknown areas, gathering information before proceeding to the goal.
+
+- The two zones are marked with **Yellow Rectangles**. They should have a high importance in the cost function. But after they get explored, their importance should decrease, thus the I-MPPI is free to move towards the goal. This should simulate the behaviour of the FSMI only trajectory refiner which gives a goal taking into account the uncertainty of the map.
 
 ![I-MPPI Exploration Campaign. The heatmap shows the cost field (darker is better). The **Gold Star** is the common goal. **Yellow Rectangles** denote high-interest (unknown) zones. The **Cyan Lines** represent walls. Standard MPPI (black dashed) goes direct, while Informative MPPI (white solid) deviates to explore both blobs before reaching the goal.](../_media/imppi_campaign.png)
 
