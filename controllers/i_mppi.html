@@ -289,6 +289,7 @@ window.Quarto = {
   <ul class="collapse">
   <li><a href="#exploration-campaign" id="toc-exploration-campaign" class="nav-link" data-scroll-target="#exploration-campaign">Exploration Campaign</a>
   <ul class="collapse">
+  <li><a href="#hierarchical-architecture-specification" id="toc-hierarchical-architecture-specification" class="nav-link" data-scroll-target="#hierarchical-architecture-specification">Hierarchical Architecture Specification</a></li>
   <li><a href="#performance-comparison" id="toc-performance-comparison" class="nav-link" data-scroll-target="#performance-comparison">Performance Comparison</a></li>
   </ul></li>
   </ul></li>
@@ -446,9 +447,14 @@ J(\tau) &amp;= \left[\phi(x_T) + \sum_{t=0}^{T-1} \mathcal{L}_{motion}(x_t, u_t)
 <section id="exploration-campaign" class="level2">
 <h2 class="anchored" data-anchor-id="exploration-campaign">Exploration Campaign</h2>
 <p>To verify the effectiveness of the informative reward, we conducted a simulation campaign in a “corridor with a hole” scenario. Both controllers are tasked with reaching a common goal at <span class="math inline">\((9, 5)\)</span>. The map contains two high-entropy “unknown” zones located away from the direct path.</p>
+<section id="hierarchical-architecture-specification" class="level3">
+<h3 class="anchored" data-anchor-id="hierarchical-architecture-specification">Hierarchical Architecture Specification</h3>
+<p>The goal for the I-MPPI simulation is to verify the effectiveness of the implementation of layer 2 and layer 3 of the hierarchical architecture.</p>
+<p>A higher-level <strong>FSMI-driven trajectory generator</strong> should precede the I-MPPI module. - <strong>Frequency</strong>: Runs at a lower rate (1-5 Hz). - <strong>Logic</strong>: 1. <strong>Explore Area 1</strong>: Prioritize regions with high information interest and lower dynamical cost. 2. <strong>Transition</strong>: As Area 1 is explored, its information value drops to zero. 3. <strong>Explore Area 2</strong>: Move to the next area of interest. 4. <strong>Drive to Goal</strong>: When information cost is depleted, drive to the goal minimizing only the dynamical cost.</p>
 <ul>
-<li><strong>Standard MPPI</strong>: Simply moves towards the target, ignoring the high-entropy regions.</li>
-<li><strong>Informative MPPI</strong>: Proactively deviates from the shortest path to explore the unknown areas, gathering information before proceeding to the goal.</li>
+<li><p><strong>Standard MPPI</strong>: Simply moves towards the target, ignoring the high-entropy regions.</p></li>
+<li><p><strong>Informative MPPI</strong>: Proactively deviates from the shortest path to explore the unknown areas, gathering information before proceeding to the goal.</p></li>
+<li><p>The two zones are marked with <strong>Yellow Rectangles</strong>. They should have a high importance in the cost function. But after they get explored, their importance should decrease, thus the I-MPPI is free to move towards the goal. This should simulate the behaviour of the FSMI only trajectory refiner which gives a goal taking into account the uncertainty of the map.</p></li>
 </ul>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -456,6 +462,7 @@ J(\tau) &amp;= \left[\phi(x_T) + \sum_{t=0}^{T-1} \mathcal{L}_{motion}(x_t, u_t)
 <figcaption>I-MPPI Exploration Campaign. The heatmap shows the cost field (darker is better). The <strong>Gold Star</strong> is the common goal. <strong>Yellow Rectangles</strong> denote high-interest (unknown) zones. The <strong>Cyan Lines</strong> represent walls. Standard MPPI (black dashed) goes direct, while Informative MPPI (white solid) deviates to explore both blobs before reaching the goal.</figcaption>
 </figure>
 </div>
+</section>
 <section id="performance-comparison" class="level3">
 <h3 class="anchored" data-anchor-id="performance-comparison">Performance Comparison</h3>
 <p>The Informative MPPI demonstrates a clear bias towards high-entropy regions of the map. By minimizing the Unified Cost Function, the controller naturally seeks out viewpoints that maximize sensor coverage of unknown space, effectively “falling” into informative gravity wells as predicted by the theory.</p>
