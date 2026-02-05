@@ -34,11 +34,13 @@ Implement `IMPPIController`, a controller that integrates:
     -   Setup a mock map (e.g., a wall with a hole or a simple room).
     -   Verify that the controller is attracted to unknown areas.
 - [x] Benchmark performance of the raycasting kernel. (Implicitly verified functionality via test run)
+- [x] Conduct extensive testing campaign and generate documentation images (`src/i_mppi_sim.cu`).
 
 ### 5. Integration
 - [ ] Expose new classes to Python bindings if needed (low priority for CLI task, focus on C++ core).
-- [ ] Cleanup.
+- [x] Cleanup and Documentation update.
 
 ## Progress Tracking
 - 2026-02-05: Updated plan with specific I-MPPI details.
 - 2026-02-05: Implemented IMPPIController, FSMICost, OccupancyGrid and verified with i_mppi_test.
+- 2026-02-05: Conducted extensive testing campaign, generated comparison plots and updated documentation.

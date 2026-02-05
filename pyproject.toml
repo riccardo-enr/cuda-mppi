@@ -20,7 +20,9 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
+  "matplotlib>=3.10.8",
   "numpy",
+  "pandas>=3.0.0",
 ]
 
 [project.optional-dependencies]
