@@ -162,7 +162,7 @@ public:
         return action;
     }
 
-private:
+protected:
     MPPIConfig config_;
     Dynamics dynamics_;
     Cost cost_;

@@ -19,6 +19,10 @@ struct MPPIConfig {
 
     // KMPPI specific
     int num_support_pts;
+    
+    // I-MPPI specific
+    float lambda_info;    // Information gain weight
+    float alpha;          // Biased sampling mixture weight [0, 1]
 };
 
 // Simple vector types if needed, or rely on float* and strides
