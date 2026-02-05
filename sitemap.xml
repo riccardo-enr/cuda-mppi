@@ -1,43 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://riccardo-enr.github.io/cuda-mppi/intro/getting_started.html</loc>
-    <lastmod>2026-02-05T14:03:24.472Z</lastmod>
-  </url>
-  <url>
-    <loc>https://riccardo-enr.github.io/cuda-mppi/controllers/controllers.html</loc>
-    <lastmod>2026-02-05T14:03:24.471Z</lastmod>
-  </url>
-  <url>
     <loc>https://riccardo-enr.github.io/cuda-mppi/dev/development.html</loc>
-    <lastmod>2026-02-05T14:03:24.472Z</lastmod>
-  </url>
-  <url>
-    <loc>https://riccardo-enr.github.io/cuda-mppi/plan/index.html</loc>
-    <lastmod>2026-02-05T14:03:24.472Z</lastmod>
+    <lastmod>2026-02-05T14:26:44.552Z</lastmod>
   </url>
   <url>
     <loc>https://riccardo-enr.github.io/cuda-mppi/core/jit.html</loc>
-    <lastmod>2026-02-05T14:03:24.472Z</lastmod>
-  </url>
-  <url>
-    <loc>https://riccardo-enr.github.io/cuda-mppi/core/architecture.html</loc>
-    <lastmod>2026-02-05T14:03:24.471Z</lastmod>
+    <lastmod>2026-02-05T14:26:44.552Z</lastmod>
   </url>
   <url>
     <loc>https://riccardo-enr.github.io/cuda-mppi/plan/i_mppi_development.html</loc>
-    <lastmod>2026-02-05T14:03:24.472Z</lastmod>
-  </url>
-  <url>
-    <loc>https://riccardo-enr.github.io/cuda-mppi/api/python_api.html</loc>
-    <lastmod>2026-02-05T14:03:24.470Z</lastmod>
-  </url>
-  <url>
-    <loc>https://riccardo-enr.github.io/cuda-mppi/controllers/i_mppi.html</loc>
-    <lastmod>2026-02-05T14:03:24.471Z</lastmod>
+    <lastmod>2026-02-05T14:26:44.553Z</lastmod>
   </url>
   <url>
     <loc>https://riccardo-enr.github.io/cuda-mppi/index.html</loc>
-    <lastmod>2026-02-05T14:15:55.811Z</lastmod>
+    <lastmod>2026-02-05T14:26:44.552Z</lastmod>
+  </url>
+  <url>
+    <loc>https://riccardo-enr.github.io/cuda-mppi/controllers/i_mppi.html</loc>
+    <lastmod>2026-02-05T14:26:44.552Z</lastmod>
+  </url>
+  <url>
+    <loc>https://riccardo-enr.github.io/cuda-mppi/api/python_api.html</loc>
+    <lastmod>2026-02-05T14:26:44.551Z</lastmod>
+  </url>
+  <url>
+    <loc>https://riccardo-enr.github.io/cuda-mppi/controllers/controllers.html</loc>
+    <lastmod>2026-02-05T14:26:44.552Z</lastmod>
+  </url>
+  <url>
+    <loc>https://riccardo-enr.github.io/cuda-mppi/plan/index.html</loc>
+    <lastmod>2026-02-05T14:26:44.553Z</lastmod>
+  </url>
+  <url>
+    <loc>https://riccardo-enr.github.io/cuda-mppi/intro/getting_started.html</loc>
+    <lastmod>2026-02-05T14:26:44.553Z</lastmod>
+  </url>
+  <url>
+    <loc>https://riccardo-enr.github.io/cuda-mppi/core/architecture.html</loc>
+    <lastmod>2026-02-05T14:26:44.552Z</lastmod>
   </url>
 </urlset>

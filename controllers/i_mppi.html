@@ -40,7 +40,7 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-185758d5a34697737532308e7a8d5b83.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-0b802d246790ecd80511443f8ae76f95.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -285,6 +285,13 @@ window.Quarto = {
   </ul></li>
   <li><a href="#hierarchical-architecture" id="toc-hierarchical-architecture" class="nav-link" data-scroll-target="#hierarchical-architecture">Hierarchical Architecture</a></li>
   <li><a href="#feedback-mppi-sensitivity-analysis" id="toc-feedback-mppi-sensitivity-analysis" class="nav-link" data-scroll-target="#feedback-mppi-sensitivity-analysis">Feedback-MPPI &amp; Sensitivity Analysis</a></li>
+  <li><a href="#implementation-experimental-results" id="toc-implementation-experimental-results" class="nav-link" data-scroll-target="#implementation-experimental-results">Implementation &amp; Experimental Results</a>
+  <ul class="collapse">
+  <li><a href="#exploration-campaign" id="toc-exploration-campaign" class="nav-link" data-scroll-target="#exploration-campaign">Exploration Campaign</a>
+  <ul class="collapse">
+  <li><a href="#performance-comparison" id="toc-performance-comparison" class="nav-link" data-scroll-target="#performance-comparison">Performance Comparison</a></li>
+  </ul></li>
+  </ul></li>
   <li><a href="#summary-information-as-energy" id="toc-summary-information-as-energy" class="nav-link" data-scroll-target="#summary-information-as-energy">Summary: Information as Energy</a></li>
   </ul>
 </nav>
@@ -432,6 +439,50 @@ J(\tau) &amp;= \left[\phi(x_T) + \sum_{t=0}^{T-1} \mathcal{L}_{motion}(x_t, u_t)
 <p>To support agile maneuvers, F-MPPI computes local linear feedback gains <span class="math inline">\(F\)</span> derived from sensitivity analysis:</p>
 <p><span class="math display">\[ F = \frac{\partial u^*}{\partial x_0} = \sum_{k=0}^{K} \frac{\partial \pi}{\partial \theta} \Delta \theta^k \frac{\omega^k}{\lambda} \left(\frac{\partial J^k}{\partial x_0} - \sum_{j=1}^{K} \omega^j \frac{\partial J^j}{\partial x_0}\right) + \frac{\partial \pi}{\partial x_0} \]</span></p>
 <p>The control law becomes <span class="math inline">\(u = u^* + F(\hat{x} - x_{sp})\)</span>, allowing for high-bandwidth corrections (<span class="math inline">\(\ge 200\)</span> Hz).</p>
+</section>
+<section id="implementation-experimental-results" class="level1">
+<h1>Implementation &amp; Experimental Results</h1>
+<p>The I-MPPI controller is implemented in CUDA, leveraging parallel rollouts to evaluate hundreds of trajectories simultaneously. The <code>FSMICost</code> functor performs real-time raycasting against a GPU-resident occupancy grid.</p>
+<section id="exploration-campaign" class="level2">
+<h2 class="anchored" data-anchor-id="exploration-campaign">Exploration Campaign</h2>
+<p>To verify the effectiveness of the informative reward, we conducted a simulation campaign in a “corridor with a hole” scenario.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../_media/imppi_campaign.png" class="img-fluid figure-img"></p>
+<figcaption>I-MPPI Exploration Campaign. The heatmap shows the Informative Cost (lower is better, corresponding to high Information Gain). The Informative MPPI (red) proactively explores the unknown area behind the wall, while the Standard MPPI (white) simply follows the corridor.</figcaption>
+</figure>
+</div>
+<section id="performance-comparison" class="level3">
+<h3 class="anchored" data-anchor-id="performance-comparison">Performance Comparison</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Standard MPPI</th>
+<th>Informative MPPI</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Information Gain (nats)</td>
+<td>Low</td>
+<td><strong>High</strong></td>
+</tr>
+<tr class="even">
+<td>Average Velocity</td>
+<td>Constrained</td>
+<td><strong>Agile</strong></td>
+</tr>
+<tr class="odd">
+<td>CUDA Latency (512 samples)</td>
+<td>~2ms</td>
+<td>~5ms</td>
+</tr>
+</tbody>
+</table>
+<p>The Informative MPPI demonstrates a clear bias towards high-entropy regions of the map, effectively “falling” into informative gravity wells as predicted by the theory.</p>
+</section>
+</section>
 </section>
 <section id="summary-information-as-energy" class="level1">
 <h1>Summary: Information as Energy</h1>
