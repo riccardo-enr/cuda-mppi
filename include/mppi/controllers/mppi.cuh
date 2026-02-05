@@ -18,7 +18,8 @@ __global__ void weighted_update_kernel(
     const float* noise,
     const float* weights,
     int K,
-    int total_params // T * nu
+    int total_params, // T * nu
+    float learning_rate
 );
 
 __global__ void shift_kernel(float* u_nom, int T, int nu);
@@ -127,7 +128,8 @@ public:
             d_noise_,
             d_weights_,
             config_.num_samples,
-            num_params 
+            num_params,
+            0.1f 
         );
         HANDLE_ERROR(cudaGetLastError());
         
@@ -185,7 +187,8 @@ __global__ void weighted_update_kernel(
     const float* noise,
     const float* weights,
     int K,
-    int total_params // T * nu
+    int total_params, // T * nu
+    float learning_rate
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= total_params) return;
@@ -195,18 +198,19 @@ __global__ void weighted_update_kernel(
         sum += weights[k] * noise[k * total_params + idx];
     }
     
-    u_nom[idx] += sum;
+    u_nom[idx] += learning_rate * sum;
 }
 
 __global__ void shift_kernel(float* u_nom, int T, int nu) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= (T - 1) * nu) return;
+    int total = T * nu;
+    if (idx >= total) return;
     
-    // Shift: u[i] = u[i + nu]
-    u_nom[idx] = u_nom[idx + nu];
-    
-    // Zero out last step? 
-    // We can do that in a separate check or kernel
+    if (idx < (T - 1) * nu) {
+        u_nom[idx] = u_nom[idx + nu];
+    } else {
+        u_nom[idx] = 0.0f; // Zero out last step
+    }
 }
 
 } // namespace mppi

@@ -44,23 +44,17 @@ __global__ void compute_info_gain_grid_kernel(
     
     float state[4] = {x_idx * resolution, y_idx * resolution, 0.0f, 0.0f};
     float u[2] = {0.0f, 0.0f};
-    
-    // Total cost at this position
     output[y_idx * width + x_idx] = cost.compute(state, u, 0);
 }
 
 void save_info_gain_map(FSMICost& cost, int width, int height, float resolution, const std::string& filename) {
     float* d_output;
     cudaMalloc(&d_output, width * height * sizeof(float));
-    
     dim3 block(16, 16);
     dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
-    
     compute_info_gain_grid_kernel<<<grid, block>>>(cost, d_output, width, height, resolution);
-    
     std::vector<float> h_output(width * height);
     cudaMemcpy(h_output.data(), d_output, width * height * sizeof(float), cudaMemcpyDeviceToHost);
-    
     std::ofstream fs(filename);
     for(int y=0; y<height; ++y) {
         for(int x=0; x<width; ++x) {
@@ -78,37 +72,24 @@ void run_sim(float lambda_info, const std::string& prefix) {
     config.horizon = 50;
     config.nx = 4;
     config.nu = 2;
-    config.lambda = 0.1f;
+    config.lambda = 1.0f; // Higher lambda for smoother distribution
     config.dt = 0.1f;
-    config.u_scale = 5.0f; // Max acceleration
+    config.u_scale = 5.0f; 
     config.lambda_info = lambda_info;
     config.alpha = 0.1f;
 
     int width = 100;
     int height = 100;
     int size = width * height;
-    std::vector<float> h_map(size, 0.01f); // Mostly free
+    std::vector<float> h_map(size, 0.01f); 
     
-    // Add "Unknown" blobs (high entropy)
-    // Blob 1: Top-left area
-    for(int y=60; y<90; ++y) {
-        for(int x=10; x<40; ++x) {
-            h_map[y*width + x] = 0.5f; 
-        }
-    }
-    // Blob 2: Bottom-right area
-    for(int y=10; y<40; ++y) {
-        for(int x=60; x<90; ++x) {
-            h_map[y*width + x] = 0.5f; 
-        }
-    }
+    // Top-left blob
+    for(int y=70; y<90; ++y) for(int x=15; x<35; ++x) h_map[y*width + x] = 0.5f; 
+    // Bottom-right blob
+    for(int y=10; y<30; ++y) for(int x=65; x<85; ++x) h_map[y*width + x] = 0.5f; 
 
     // Wall at x=50
-    for(int y=0; y<100; ++y) {
-        if (y < 40 || y > 60) {
-            h_map[y*width + 50] = 0.99f; 
-        }
-    }
+    for(int y=0; y<100; ++y) if (y < 40 || y > 60) h_map[y*width + 50] = 0.99f; 
     
     float* d_map_data;
     cudaMalloc(&d_map_data, size * sizeof(float));
@@ -129,55 +110,39 @@ void run_sim(float lambda_info, const std::string& prefix) {
     cost.lambda_info = config.lambda_info;
     cost.sensor_range = 6.0f;
     cost.goal = make_float3(9.0f, 5.0f, 0.0f);
-    cost.lambda_goal = 10.0f; // Stronger goal attraction
+    cost.lambda_goal = 5.0f; 
     
-    if (lambda_info > 0) {
-        save_info_gain_map(cost, width, height, 0.1f, prefix + "_map.csv");
-    }
+    if (lambda_info > 0) save_info_gain_map(cost, width, height, 0.1f, prefix + "_map.csv");
 
     SimpleDynamics dyn;
     IMPPIController<SimpleDynamics, FSMICost> controller(config, dyn, cost);
 
-    // Reference trajectory: moving towards goal (biased samples)
     Eigen::VectorXf u_ref = Eigen::VectorXf::Zero(config.horizon * config.nu);
-    // Let's bias it towards the blobs to help exploration
-    // Note: IMPPI usually updates this reference from a higher layer
     controller.set_reference_trajectory(u_ref);
 
     Eigen::VectorXf state = Eigen::VectorXf::Zero(4);
-    state[0] = 1.0f; 
-    state[1] = 5.0f; 
-    state[2] = 0.0f; 
+    state[0] = 1.0f; state[1] = 5.0f; state[2] = 0.5f; // Start with initial velocity
 
     std::ofstream fs(prefix + "_traj.csv");
     fs << "t,x,y,vx,vy\n";
 
-    for(int i=0; i<200; ++i) {
+    for(int i=0; i<300; ++i) {
         controller.compute(state);
         Eigen::VectorXf action = controller.get_action();
-        
         fs << i*config.dt << "," << state[0] << "," << state[1] << "," << state[2] << "," << state[3] << "\n";
-        
         dyn.step_host(state, action, config.dt);
-        
-        // CRITICAL: Shift the nominal trajectory for warm-start!
         controller.shift();
-        
-        // Break if close to goal
-        if ((state.head(2) - Eigen::Vector2f(9, 5)).norm() < 0.2) break;
+        if ((state.head(2) - Eigen::Vector2f(9, 5)).norm() < 0.3) break;
     }
-
     fs.close();
     cudaFree(d_map_data);
     cudaFree(d_grid_ptr);
 }
 
 int main() {
-    std::cout << "Running Standard Simulation (lambda_info = 0)..." << std::endl;
+    std::cout << "Running Standard Simulation..." << std::endl;
     run_sim(0.0f, "std");
-    
-    std::cout << "Running Informative Simulation (lambda_info = 500)..." << std::endl;
-    run_sim(500.0f, "info");
-    
+    std::cout << "Running Informative Simulation..." << std::endl;
+    run_sim(2000.0f, "info"); // Even higher info weight
     return 0;
 }

@@ -19,94 +19,56 @@ struct FSMICost {
     __device__ float compute(const float* x, const float* u, int t) const {
         // 1. Motion Cost (Regularization)
         float cost = 0.0f;
-        // Simple quadratic control cost: u^T R u
-        // Assuming nu=2 (v, w)
         cost += 0.1f * (u[0]*u[0] + u[1]*u[1]);
 
-        // 2. Goal Cost
+        // 2. Goal Cost (Stage)
         float dx_g = x[0] - goal.x;
         float dy_g = x[1] - goal.y;
-        cost += lambda_goal * (dx_g*dx_g + dy_g*dy_g);
+        float dist_sq = dx_g*dx_g + dy_g*dy_g;
+        cost += lambda_goal * dist_sq;
 
-        // 3. Information Reward (FSMI)
-        if (map == nullptr) return cost;
+        // 3. Velocity Penalty (Stability)
+        cost += 0.1f * (x[2]*x[2] + x[3]*x[3]);
 
-        // Robot State: Assuming standard 2D/3D state vector
-        // [x, y, z, roll, pitch, yaw, ...] or [x, y, theta, v, w]
-        // Let's assume indices: 0:x, 1:y, 2:z (or theta if 2D).
-        // For the 2D test dynamics: x, y, vx, vy. No theta? 
-        // The test dynamics don't have orientation. 
-        // Let's assume the robot "looks" in the direction of velocity 
-        // OR we need to augment state with yaw.
-        // For MPPI, usually we optimize (v, w) so we track yaw.
-        // Let's assume state index 2 is yaw? 
-        // In the test setup: x, y, vx, vy.
-        // Let's calculate yaw from velocity for this test: atan2(vy, vx).
-        
-        float rx = x[0];
-        float ry = x[1];
-        float rz = 0.0f; // Fixed height (0 for 2D map)
-        
-        float vx = x[2];
-        float vy = x[3];
-        float yaw = atan2f(vy, vx);
-        
-        // Raycast parameters
-        float max_dist = (sensor_range > 0.0f) ? sensor_range : 10.0f;
-        float step_size = map->resolution; // Step size = grid resolution
-        int num_steps = (int)(max_dist / step_size);
-        
-        float current_vis = 1.0f; // P(visible)
+        // 4. Information Reward (Omnidirectional FSMI)
+        if (map == nullptr || lambda_info <= 0.0f) return cost;
+
         float total_info = 0.0f;
+        int num_beams = 8;
         
-        float cx = rx;
-        float cy = ry;
-        float cz = rz;
-        
-        float dx = cosf(yaw) * step_size;
-        float dy = sinf(yaw) * step_size;
-        
-        // Simple Raymarching (0-order)
-        // A better approach is Bresenham or DDA, but for GPU float evaluation,
-        // stepping by resolution is often "good enough" for probabilistic maps.
-        
-        for(int k=0; k<num_steps; ++k) {
-            cx += dx;
-            cy += dy;
+        for (int b = 0; b < num_beams; ++b) {
+            float angle = b * (2.0f * 3.14159265f / (float)num_beams);
+            float dx = cosf(angle) * map->resolution;
+            float dy = sinf(angle) * map->resolution;
             
-            // Get Probability of Occupancy
-            // Use 3D accessor
-            float p = map->get_probability(make_float3(cx, cy, cz));
+            float current_vis = 1.0f;
+            float beam_info = 0.0f;
+            float cx = x[0];
+            float cy = x[1];
+            float cz = 0.0f;
             
-            // Clamp p to avoid log(0)
-            if(p < 0.001f) p = 0.001f;
-            if(p > 0.999f) p = 0.999f;
-            
-            // Shannon Entropy: H(p) = -p log p - (1-p) log (1-p)
-            // Max at p=0.5 -> H = -0.5*-0.693... * 2 = 0.693 nats
-            float entropy = -p * logf(p) - (1.0f - p) * logf(1.0f - p);
-            
-            // Expected Information Gain at this cell
-            // We gain info if we see it.
-            // IG += P(visible) * Entropy
-            total_info += current_vis * entropy;
-            
-            // Update visibility
-            // P(visible_next) = P(visible_current) * P(empty)
-            // P(empty) = 1 - p
-            current_vis *= (1.0f - p);
-            
-            if (current_vis < 0.01f) break; // Optimization: stop if visibility is low
+            int num_steps = (int)(sensor_range / map->resolution);
+            for (int k = 0; k < num_steps; ++k) {
+                cx += dx;
+                cy += dy;
+                float p = map->get_probability(make_float3(cx, cy, cz));
+                p = (p < 0.001f) ? 0.001f : ((p > 0.999f) ? 0.999f : p);
+                float entropy = -p * logf(p) - (1.0f - p) * logf(1.0f - p);
+                beam_info += current_vis * entropy;
+                current_vis *= (1.0f - p);
+                if (current_vis < 0.01f) break;
+            }
+            total_info += beam_info;
         }
-        
-        // Subtract Info Reward from Cost (Maximizing Info = Minimizing Cost)
-        cost -= lambda_info * total_info;
-        
+
+        cost -= lambda_info * (total_info / (float)num_beams);
         return cost;
     }
     
     __device__ float terminal_cost(const float* x) const {
-        return 0.0f;
+        float dx_g = x[0] - goal.x;
+        float dy_g = x[1] - goal.y;
+        return 100.0f * (dx_g*dx_g + dy_g*dy_g); // Strong terminal attraction
     }
 };
 

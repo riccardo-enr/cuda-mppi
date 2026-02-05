@@ -152,7 +152,8 @@ public:
             this->d_noise_,
             this->d_weights_,
             this->config_.num_samples,
-            num_params 
+            num_params,
+            0.1f 
         );
         HANDLE_ERROR(cudaGetLastError());
     }
