@@ -1,6 +1,6 @@
-import pytest
-import numpy as np
 import cuda_mppi
+import numpy as np
+
 
 def test_config_instantiation():
     config = cuda_mppi.MPPIConfig(
