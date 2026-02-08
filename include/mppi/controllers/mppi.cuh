@@ -11,7 +11,28 @@
 #include "mppi/core/kernels.cuh"
 #include "mppi/utils/cuda_utils.cuh"
 
+#include <thrust/device_vector.h>
+#include <thrust/reduce.h>
+#include <thrust/transform.h>
+#include <thrust/extrema.h>
+#include <thrust/execution_policy.h>
+
 namespace mppi {
+
+struct ExpWeightOp {
+    float min_cost;
+    float lambda;
+    __device__ float operator()(const float& cost) const {
+        return expf(-(cost - min_cost) / lambda);
+    }
+};
+
+struct NormalizeOp {
+    float sum;
+    __device__ float operator()(const float& w) const {
+        return w / sum;
+    }
+};
 
 __global__ void weighted_update_kernel(
     float* u_nom,
@@ -85,39 +106,23 @@ public:
         HANDLE_ERROR(cudaDeviceSynchronize()); // For debugging/safety
 
         // Compute Weights (Softmax)
-        // This usually requires a reduction to find min cost, then exp, then sum, then normalize.
-        // I'll implement a simple host-side weight computation for now to get it running, 
-        // as implementing full device reduction is verbose.
-        // PROTOTYPE: Copy costs to host, compute weights, update u_nom on host, copy back.
-        
-        std::vector<float> h_costs(config_.num_samples);
-        HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_, config_.num_samples * sizeof(float), cudaMemcpyDeviceToHost));
+        thrust::device_ptr<float> d_costs_ptr(d_costs_);
+        thrust::device_ptr<float> d_weights_ptr(d_weights_);
 
-        float min_cost = h_costs[0];
-        for(float c : h_costs) if(c < min_cost) min_cost = c;
+        // Find min cost
+        float min_cost = *thrust::min_element(thrust::device, d_costs_ptr, d_costs_ptr + config_.num_samples);
 
-        std::vector<float> h_weights(config_.num_samples);
-        float sum_weights = 0.0f;
-        for(int k=0; k<config_.num_samples; ++k) {
-            float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
-            h_weights[k] = w;
-            sum_weights += w;
-        }
+        // Compute exponentials: w = exp(-(cost - min_cost) / lambda)
+        thrust::transform(thrust::device, d_costs_ptr, d_costs_ptr + config_.num_samples, d_weights_ptr,
+                          ExpWeightOp{min_cost, config_.lambda});
 
-        for(int k=0; k<config_.num_samples; ++k) {
-            h_weights[k] /= sum_weights;
-        }
+        // Compute sum of weights
+        float sum_weights = thrust::reduce(thrust::device, d_weights_ptr, d_weights_ptr + config_.num_samples,
+                                           0.0f, thrust::plus<float>());
 
-        // Update U_nom
-        // u_nom += sum(w * noise)
-        // Again, doing on host for simplicity of implementation in this prototype phase.
-        // Copy noise to host is expensive (K*T*NU floats).
-        // Better: implement a simple update kernel.
-        
-        // Let's do a simple update kernel.
-        // update_control_kernel<<<1, 1>>>( ... );
-        
-        HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(), config_.num_samples * sizeof(float), cudaMemcpyHostToDevice));
+        // Normalize: w /= sum
+        thrust::transform(thrust::device, d_weights_ptr, d_weights_ptr + config_.num_samples, d_weights_ptr,
+                          NormalizeOp{sum_weights});
         
         int num_params = config_.horizon * config_.nu;
         int threads = 256;
