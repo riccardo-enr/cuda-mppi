@@ -2,10 +2,26 @@
 #define MPPI_KERNELS_CUH
 
 #include <cuda_runtime.h>
+#include <type_traits>
 #include "mppi_common.cuh"
 
 namespace mppi {
 namespace kernels {
+
+// SFINAE helper to detect STATE_DIM and CONTROL_DIM
+template <typename T, typename Enable = void>
+struct DynamicsDims {
+    static constexpr int STATE_DIM = 32;
+    static constexpr int CONTROL_DIM = 12;
+    static constexpr bool HAS_DIMS = false;
+};
+
+template <typename T>
+struct DynamicsDims<T, std::void_t<decltype(T::STATE_DIM), decltype(T::CONTROL_DIM)>> {
+    static constexpr int STATE_DIM = T::STATE_DIM;
+    static constexpr int CONTROL_DIM = T::CONTROL_DIM;
+    static constexpr bool HAS_DIMS = true;
+};
 
 template <typename Dynamics, typename Cost>
 __global__ void rollout_kernel(
@@ -20,17 +36,22 @@ __global__ void rollout_kernel(
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= config.num_samples) return;
 
-    // Use compile-time constants if available, otherwise fallback to local arrays
-    // assuming reasonable max dimensions or dynamic indexing if supported
-    constexpr int MAX_NX = 32; 
-    constexpr int MAX_NU = 12;
+    // Use compile-time constants if available to reduce register pressure and enable unrolling
+    constexpr int NX = DynamicsDims<Dynamics>::STATE_DIM;
+    constexpr int NU = DynamicsDims<Dynamics>::CONTROL_DIM;
+    constexpr bool HAS_DIMS = DynamicsDims<Dynamics>::HAS_DIMS;
 
-    float x[MAX_NX];
-    float u[MAX_NU];
-    float x_next[MAX_NX];
+    float x[NX];
+    float u[NU];
+    float x_next[NX];
+
+    // Determine loop bounds: use constant if available, otherwise runtime config
+    int nx_loop = HAS_DIMS ? NX : config.nx;
+    int nu_loop = HAS_DIMS ? NU : config.nu;
 
     // Copy initial state
-    for(int i=0; i<config.nx; ++i) {
+    #pragma unroll
+    for(int i=0; i<nx_loop; ++i) {
         x[i] = initial_state[i];
     }
     
@@ -38,7 +59,8 @@ __global__ void rollout_kernel(
     
     for (int t = 0; t < config.horizon; ++t) {
         // Compute control u = u_nom[t] + noise[k, t]
-        for(int i=0; i<config.nu; ++i) {
+        #pragma unroll
+        for(int i=0; i<nu_loop; ++i) {
             // noise index: k * (T * nu) + t * nu + i
             int noise_idx = k * (config.horizon * config.nu) + t * config.nu + i;
             float n_val = noise[noise_idx];
@@ -61,7 +83,8 @@ __global__ void rollout_kernel(
         total_cost += cost.compute(x, u, t);
         
         // Update state
-        for(int i=0; i<config.nx; ++i) {
+        #pragma unroll
+        for(int i=0; i<nx_loop; ++i) {
             x[i] = x_next[i];
         }
     }
