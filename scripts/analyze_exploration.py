@@ -163,8 +163,8 @@ def create_detailed_plot(info, std, area1, area2):
     ax1.set_ylim(0, 10)
 
     plt.tight_layout()
-    plt.savefig("docs/_media/imppi_analysis.png", dpi=150, bbox_inches="tight")
-    print("\n✓ Interest region analysis saved to: docs/_media/imppi_analysis.png")
+    plt.savefig("docs/_media/i_mppi/imppi_analysis.png", dpi=150, bbox_inches="tight")
+    print("\n✓ Interest region analysis saved to: docs/_media/i_mppi/imppi_analysis.png")
 
     plt.show()
 
