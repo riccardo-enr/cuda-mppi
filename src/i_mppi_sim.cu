@@ -142,16 +142,19 @@ float calculate_area_entropy(const std::vector<float>& map, int width, int x_min
 }
 
 void run_sim(float lambda_info, const std::string &prefix) {
-  MPPIConfig config;
-  config.num_samples = 1024;
-  config.horizon = 50;
-  config.nx = 4;
-  config.nu = 2;
-  config.lambda = 1.0f; // Higher lambda for smoother distribution
-  config.dt = 0.1f;
-  config.u_scale = 5.0f;
-  config.lambda_info = lambda_info;
-  config.alpha = 0.3f; // Higher alpha for stronger exploration bias
+  MPPIConfig planner_config;
+  planner_config.num_samples = 1024;
+  planner_config.horizon = 50;
+  planner_config.nx = 4;
+  planner_config.nu = 2;
+  planner_config.lambda = 1.0f; // Higher lambda for smoother distribution
+  planner_config.dt = 0.1f;
+  planner_config.u_scale = 5.0f;
+  planner_config.lambda_info = lambda_info;
+  planner_config.alpha = 0.0f; // No bias for planner
+
+  MPPIConfig controller_config = planner_config;
+  controller_config.alpha = 0.3f; // Bias for reactive controller
 
   // Map
   int width = 100;
@@ -192,7 +195,7 @@ void run_sim(float lambda_info, const std::string &prefix) {
 
   FSMICost cost;
   cost.map = d_grid_ptr;
-  cost.lambda_info = config.lambda_info;
+  cost.lambda_info = controller_config.lambda_info;
   cost.sensor_range = 3.0f; // Shorter range - robot must get closer to observe
   cost.goal = make_float3(9.0f, 5.0f, 0.0f);
   cost.lambda_goal =
@@ -203,9 +206,11 @@ void run_sim(float lambda_info, const std::string &prefix) {
     save_info_gain_map(cost, width, height, 0.1f, prefix + "_map_initial.csv");
 
   SimpleDynamics dyn;
-  IMPPIController<SimpleDynamics, FSMICost> controller(config, dyn, cost);
+  IMPPIController<SimpleDynamics, FSMICost> planner(planner_config, dyn, cost);
+  IMPPIController<SimpleDynamics, FSMICost> controller(controller_config, dyn, cost);
 
-  Eigen::VectorXf u_ref = Eigen::VectorXf::Zero(config.horizon * config.nu);
+  // Initial reference trajectory (zeros)
+  Eigen::VectorXf u_ref = Eigen::VectorXf::Zero(controller_config.horizon * controller_config.nu);
   controller.set_reference_trajectory(u_ref);
 
   Eigen::VectorXf state = Eigen::VectorXf::Zero(4);
@@ -243,11 +248,20 @@ void run_sim(float lambda_info, const std::string &prefix) {
              current_lambda_goal = 2.0f; // Very strong drive to final goal
         }
         controller.update_cost_params(current_goal, current_lambda_goal);
+        planner.update_cost_params(current_goal, current_lambda_goal);
+
+        // Run Layer 2: FSMI-Informed Trajectory Generator
+        planner.compute(state);
+        Eigen::VectorXf u_ref = planner.get_optimal_control_sequence();
+
+        // Pass to Layer 3: Informative Reference
+        controller.set_reference_trajectory(u_ref);
     }
 
+    // Run Layer 3: Reactive Biased-MPPI
     controller.compute(state);
     Eigen::VectorXf action = controller.get_action();
-    fs << i * config.dt << "," << state[0] << "," << state[1] << "," << state[2]
+    fs << i * controller_config.dt << "," << state[0] << "," << state[1] << "," << state[2]
        << "," << state[3] << "\n";
 
     // For informative MPPI: update map based on observations (simulate
@@ -259,8 +273,11 @@ void run_sim(float lambda_info, const std::string &prefix) {
                  cudaMemcpyHostToDevice);
     }
 
-    dyn.step_host(state, action, config.dt);
+    dyn.step_host(state, action, controller_config.dt);
     controller.shift();
+    if (lambda_info > 0) {
+        planner.shift();
+    }
     
     // Only break if we are near the FINAL goal (9,5) AND both areas are explored
     // Or just checking distance to final goal is sufficient if the logic steers us there last.
