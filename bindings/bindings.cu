@@ -138,6 +138,20 @@ struct PyQuadrotorIMPPI {
         controller.set_reference_trajectory(u_ref);
     }
 
+    void set_cost(const instantiations::InformativeCost& cost) {
+        controller.set_cost(cost);
+    }
+
+    void update_cost_grid(PyOccupancyGrid2D& py_grid) {
+        auto& c = controller.cost();
+        c.grid = py_grid.grid;
+    }
+
+    void update_cost_info_field(PyInfoField& py_field) {
+        auto& c = controller.cost();
+        c.info_field = py_field.field;
+    }
+
     void set_position_reference(const Eigen::VectorXf& pos_ref_flat, int horizon) {
         // Upload position reference (horizon × 3) to device
         if (d_ref_traj == nullptr || ref_horizon != horizon) {
@@ -300,7 +314,13 @@ NB_MODULE(cuda_mppi, m) {
              nb::arg("u_ref"), "Set control reference for biased sampling")
         .def("set_position_reference", &PyQuadrotorIMPPI::set_position_reference,
              nb::arg("pos_ref_flat"), nb::arg("horizon"),
-             "Upload position reference trajectory (horizon*3) to device");
+             "Upload position reference trajectory (horizon*3) to device")
+        .def("set_cost", &PyQuadrotorIMPPI::set_cost, nb::arg("cost"),
+             "Replace the controller's cost function")
+        .def("update_cost_grid", &PyQuadrotorIMPPI::update_cost_grid, nb::arg("grid"),
+             "Update the grid pointer in the controller's cost")
+        .def("update_cost_info_field", &PyQuadrotorIMPPI::update_cost_info_field, nb::arg("info_field"),
+             "Update the info field pointer in the controller's cost");
 
     // 8. TrajectoryGenerator
     using TG = planning::TrajectoryGenerator;

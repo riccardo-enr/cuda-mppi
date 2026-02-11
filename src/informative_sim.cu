@@ -115,7 +115,7 @@ int main() {
     mppi_cfg.nu          = 4;
     mppi_cfg.lambda      = 0.1f;
     mppi_cfg.dt          = DT;
-    mppi_cfg.u_scale     = 1.0f;
+    mppi_cfg.u_scale     = 10.0f;  // noise * u_scale covers [0, 39.24] thrust range
     mppi_cfg.lambda_info = ifc.lambda_info;
     mppi_cfg.alpha       = 0.5f;
 
@@ -133,6 +133,20 @@ int main() {
 
     // --- Controller ---
     IMPPIController<QuadrotorDynamics, InformativeCost> controller(mppi_cfg, dynamics, cost);
+
+    // Initialize nominal controls to hover: u_nom[t][0] = mg / u_scale
+    {
+        float hover_thrust_scaled = dynamics.mass * dynamics.gravity / mppi_cfg.u_scale;
+        Eigen::VectorXf u_hover = Eigen::VectorXf::Zero(mppi_cfg.horizon * mppi_cfg.nu);
+        for (int t = 0; t < mppi_cfg.horizon; ++t)
+            u_hover(t * mppi_cfg.nu + 0) = hover_thrust_scaled;
+        // Use set_reference_trajectory to set biased reference, and manually init u_nom
+        controller.set_reference_trajectory(u_hover);
+        // Also upload as initial u_nom via a temporary compute-free path
+        cudaMemcpy(controller.get_u_nom_ptr(), u_hover.data(),
+                   mppi_cfg.horizon * mppi_cfg.nu * sizeof(float),
+                   cudaMemcpyHostToDevice);
+    }
 
     // --- Trajectory generator ---
     TrajectoryGeneratorConfig tg_cfg;
@@ -194,15 +208,13 @@ int main() {
             cudaMemcpy(d_ref_traj, ref.data(), ifc.ref_horizon * 3 * sizeof(float),
                        cudaMemcpyHostToDevice);
 
-            // Update cost's reference trajectory pointer
-            // Note: We update cost via a copy since IMPPIController stores cost by value
-            // For production, the cost should hold a persistent device pointer.
+            // Update cost fields and propagate to controller
             cost.ref_trajectory = d_ref_traj;
             cost.ref_horizon    = ifc.ref_horizon;
             cost.info_field     = info_field;
+            controller.set_cost(cost);
 
             // Set reference control trajectory for biased sampling
-            // (convert position ref to zero controls — biased MPPI shifts noise)
             Eigen::VectorXf u_ref = Eigen::VectorXf::Zero(mppi_cfg.horizon * mppi_cfg.nu);
             controller.set_reference_trajectory(u_ref);
         }
@@ -224,7 +236,7 @@ int main() {
 
         // 4. MPPI compute
         controller.compute(state);
-        Eigen::VectorXf action = controller.get_action();
+        Eigen::VectorXf action = controller.get_action() * mppi_cfg.u_scale;
 
         // 5. Log
         traj_log << step << ","

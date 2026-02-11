@@ -23,6 +23,9 @@ struct MPPIConfig {
     // I-MPPI specific
     float lambda_info;    // Information gain weight
     float alpha;          // Biased sampling mixture weight [0, 1]
+
+    // Update step size (standard MPPI = 1.0)
+    float learning_rate = 1.0f;
 };
 
 // Simple vector types if needed, or rely on float* and strides

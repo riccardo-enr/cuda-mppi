@@ -8,6 +8,12 @@ endif()
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CXX_STANDARD 17)
 
+# Export compile commands for IDE integration
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Suppress Eigen/CUDA constexpr warnings
+add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 find_package(Eigen3 REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)

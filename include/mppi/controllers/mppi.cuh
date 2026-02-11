@@ -54,6 +54,11 @@ public:
         curandDestroyGenerator(gen_);
     }
 
+    void set_cost(const Cost& cost) { cost_ = cost; }
+    Cost& cost() { return cost_; }
+    const Cost& cost() const { return cost_; }
+    float* get_u_nom_ptr() { return d_u_nom_; }
+
     void compute(const Eigen::VectorXf& state) {
         // Copy state to device
         HANDLE_ERROR(cudaMemcpy(d_initial_state_, state.data(), config_.nx * sizeof(float), cudaMemcpyHostToDevice));
@@ -129,7 +134,7 @@ public:
             d_weights_,
             config_.num_samples,
             num_params,
-            0.1f 
+            config_.learning_rate
         );
         HANDLE_ERROR(cudaGetLastError());
         
