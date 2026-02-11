@@ -60,3 +60,11 @@ target_link_libraries(i_mppi_test PRIVATE cuda_mppi_lib)
 
 add_executable(i_mppi_sim src/i_mppi_sim.cu)
 target_link_libraries(i_mppi_sim PRIVATE cuda_mppi_lib)
+
+# FSMI unit tests
+add_executable(fsmi_unit_test src/fsmi_unit_test.cu)
+target_link_libraries(fsmi_unit_test PRIVATE cuda_mppi_lib)
+
+# Full informative simulation (quadrotor + FSMI + info field)
+add_executable(informative_sim src/informative_sim.cu)
+target_link_libraries(informative_sim PRIVATE cuda_mppi_lib)
