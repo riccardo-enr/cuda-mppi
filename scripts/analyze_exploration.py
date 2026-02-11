@@ -2,7 +2,6 @@
 """Analyze and visualize hierarchical exploration campaign results."""
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
 
@@ -27,8 +26,9 @@ def analyze_exploration():
         & (info["y"] >= 1.0)
         & (info["y"] <= 4.0)
     ]
+    # Optimization: Use squared distance to avoid expensive sqrt
     goal_visits = info[
-        np.sqrt((info["x"] - 9.0) ** 2 + (info["y"] - 5.0) ** 2) < 1.5
+        ((info["x"] - 9.0) ** 2 + (info["y"] - 5.0) ** 2) < 1.5**2
     ]
 
     print("=" * 60)
