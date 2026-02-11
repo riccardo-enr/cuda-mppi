@@ -3,9 +3,12 @@
 
 #include <string>
 
-namespace mppi {
-namespace jit {
-namespace examples {
+namespace mppi
+{
+namespace jit
+{
+namespace examples
+{
 
 /**
  * @brief Example pendulum dynamics
@@ -13,7 +16,8 @@ namespace examples {
  * State: [theta, theta_dot]
  * Control: [torque]
  */
-const std::string PENDULUM_DYNAMICS = R"(
+const std::string PENDULUM_DYNAMICS =
+  R"(
 struct UserDynamics {
     static constexpr float g = 9.81f;
     static constexpr float m = 1.0f;
@@ -42,7 +46,8 @@ struct UserDynamics {
  * State: [position, velocity]
  * Control: [acceleration]
  */
-const std::string DOUBLE_INTEGRATOR_DYNAMICS = R"(
+const std::string DOUBLE_INTEGRATOR_DYNAMICS =
+  R"(
 struct UserDynamics {
     __device__ void step(const float* x, const float* u, float* x_next, float dt) {
         // x[0] = position, x[1] = velocity
@@ -63,7 +68,8 @@ struct UserDynamics {
  *
  * Goal: Stabilize at theta = 0 (upright position)
  */
-const std::string PENDULUM_QUADRATIC_COST = R"(
+const std::string PENDULUM_QUADRATIC_COST =
+  R"(
 struct UserCost {
     static constexpr float Q_theta = 10.0f;
     static constexpr float Q_theta_dot = 1.0f;
@@ -96,7 +102,8 @@ struct UserCost {
  *
  * Goal: Reach position = 0
  */
-const std::string DOUBLE_INTEGRATOR_QUADRATIC_COST = R"(
+const std::string DOUBLE_INTEGRATOR_QUADRATIC_COST =
+  R"(
 struct UserCost {
     static constexpr float Q_pos = 1.0f;
     static constexpr float Q_vel = 0.1f;
@@ -129,7 +136,8 @@ struct UserCost {
  * State: [x, x_dot, theta, theta_dot]
  * Control: [force]
  */
-const std::string CARTPOLE_DYNAMICS = R"(
+const std::string CARTPOLE_DYNAMICS =
+  R"(
 struct UserDynamics {
     static constexpr float g = 9.81f;
     static constexpr float mc = 1.0f;  // cart mass
@@ -168,7 +176,8 @@ struct UserDynamics {
  *
  * Goal: Balance pole upright (theta = 0) at cart position = 0
  */
-const std::string CARTPOLE_QUADRATIC_COST = R"(
+const std::string CARTPOLE_QUADRATIC_COST =
+  R"(
 struct UserCost {
     static constexpr float Q_pos = 1.0f;
     static constexpr float Q_vel = 0.1f;

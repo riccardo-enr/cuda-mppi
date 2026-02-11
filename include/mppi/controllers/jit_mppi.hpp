@@ -11,7 +11,8 @@
 #include "mppi/jit/jit_compiler.hpp"
 #include "mppi/jit/jit_utils.h"
 
-namespace mppi {
+namespace mppi
+{
 
 /**
  * @brief JIT-compiled MPPI Controller
@@ -30,67 +31,69 @@ public:
      * @param cost_code C++ code defining a struct with compute() and terminal_cost() methods
      * @param include_paths Additional include paths for compilation
      */
-    JITMPPIController(const MPPIConfig& config,
-                      const std::string& dynamics_code,
-                      const std::string& cost_code,
-                      const std::vector<std::string>& include_paths = {});
+  JITMPPIController(
+    const MPPIConfig & config,
+    const std::string & dynamics_code,
+    const std::string & cost_code,
+    const std::vector<std::string> & include_paths = {});
 
     /**
      * @brief Destructor - cleanup CUDA resources
      */
-    ~JITMPPIController();
+  ~JITMPPIController();
 
     /**
      * @brief Compute optimal control for given state
      *
      * @param state Current state vector (size nx)
      */
-    void compute(const Eigen::VectorXf& state);
+  void compute(const Eigen::VectorXf & state);
 
     /**
      * @brief Get the first action from the nominal trajectory
      *
      * @return Action vector (size nu)
      */
-    Eigen::VectorXf get_action();
+  Eigen::VectorXf get_action();
 
     /**
      * @brief Shift the nominal trajectory forward by one time step
      */
-    void shift();
+  void shift();
 
     /**
      * @brief Get the nominal control trajectory
      *
      * @return Control trajectory matrix (horizon x nu)
      */
-    Eigen::MatrixXf get_nominal_trajectory();
+  Eigen::MatrixXf get_nominal_trajectory();
 
 private:
-    MPPIConfig config_;
+  MPPIConfig config_;
 
     // CUDA Driver API handles
-    CUmodule module_;
-    CUfunction rollout_function_;
-    CUcontext context_;
+  CUmodule module_;
+  CUfunction rollout_function_;
+  CUcontext context_;
 
     // Device memory
-    float* d_u_nom_;
-    float* d_noise_;
-    float* d_costs_;
-    float* d_initial_state_;
-    float* d_weights_;
+  float * d_u_nom_;
+  float * d_noise_;
+  float * d_costs_;
+  float * d_initial_state_;
+  float * d_weights_;
 
     // CuRAND
-    curandGenerator_t gen_;
+  curandGenerator_t gen_;
 
     // Helper methods
-    void initialize_cuda_resources();
-    void compile_and_load_module(const std::string& dynamics_code,
-                                  const std::string& cost_code,
-                                  const std::vector<std::string>& include_paths);
-    void compute_weights(float* h_costs, float* h_weights);
-    void update_nominal_controls(const float* h_weights);
+  void initialize_cuda_resources();
+  void compile_and_load_module(
+    const std::string & dynamics_code,
+    const std::string & cost_code,
+    const std::vector<std::string> & include_paths);
+  void compute_weights(float * h_costs, float * h_weights);
+  void update_nominal_controls(const float * h_weights);
 };
 
 } // namespace mppi

@@ -7,6 +7,7 @@ CUDA-accelerated Model Predictive Path Integral (MPPI) control library.
 ## Overview
 
 This library provides high-performance CUDA implementations of MPPI and related sampling-based control algorithms:
+
 - **MPPI**: Model Predictive Path Integral control
 - **KMPPI**: Kernel MPPI with colored noise
 - **SMPPI**: Smooth MPPI variant
@@ -41,7 +42,7 @@ make
 
 ## Structure
 
-```
+```text
 cuda_mppi/
 ├── include/mppi/
 │   ├── core/           # Core CUDA kernels and utilities
