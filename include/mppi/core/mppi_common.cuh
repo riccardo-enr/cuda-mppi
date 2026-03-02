@@ -14,7 +14,8 @@ struct MPPIConfig
   int nu;                 // Control dimension
   float lambda;           // Temperature
   float dt;               // Time step
-  float u_scale;          // Control scale
+  float u_scale;          // Control scale (uniform, legacy)
+  float control_sigma[12] = {1,1,1,1, 1,1,1,1, 1,1,1,1}; // Per-dim noise std dev
 
     // SMPPI specific
   float w_action_seq_cost;
@@ -29,9 +30,6 @@ struct MPPIConfig
     // Update step size (standard MPPI = 1.0)
   float learning_rate = 1.0f;
 };
-
-// Simple vector types if needed, or rely on float* and strides
-// We'll use raw pointers for now in kernels
 
 } // namespace mppi
 

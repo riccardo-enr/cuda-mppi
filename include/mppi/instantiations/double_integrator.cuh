@@ -28,7 +28,8 @@ struct DoubleIntegrator
 
 struct QuadraticCost
 {
-  __host__ __device__ float compute(const float * state, const float * u, int t) const
+  __host__ __device__ float compute(const float * state, const float * u,
+                                    const float * /*u_prev*/, int t) const
   {
     float c = 0.0f;
         // State cost (to origin)

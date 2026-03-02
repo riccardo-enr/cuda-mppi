@@ -18,7 +18,8 @@ struct FSMICost
 
     // Additional parameters for dynamics/collision can be added.
 
-  __device__ float compute(const float * x, const float * u, int t) const
+  __device__ float compute(const float * x, const float * u,
+                           const float * /*u_prev*/, int t) const
   {
         // 1. Motion Cost (Regularization)
     float cost = 0.0f;

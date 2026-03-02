@@ -2,8 +2,9 @@
 #define KMPPI_CONTROLLER_CUH
 
 #include "mppi.cuh"
-#include <vector>
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace mppi
 {
@@ -46,6 +47,9 @@ public:
     HANDLE_ERROR(cudaMemset(d_theta_, 0, num_support * config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_u_nom_, 0, config.horizon * config.nu * sizeof(float)));
 
+    HANDLE_ERROR(cudaMalloc(&d_u_applied_, config.nu * sizeof(float)));
+    HANDLE_ERROR(cudaMemset(d_u_applied_, 0, config.nu * sizeof(float)));
+
     HANDLE_CURAND_ERROR(curandCreateGenerator(&gen_, CURAND_RNG_PSEUDO_DEFAULT));
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
 
@@ -63,6 +67,7 @@ public:
     cudaFree(d_costs_);
     cudaFree(d_initial_state_);
     cudaFree(d_weights_);
+    cudaFree(d_u_applied_);
     curandDestroyGenerator(gen_);
   }
 
@@ -71,7 +76,11 @@ public:
         // Simple RBF kernel implementation on host
     int T = config_.horizon;
     int M = config_.num_support_pts;
-    float sigma = 1.0f;     // Default RBF sigma
+    // RBF sigma should scale with support point spacing to ensure smooth
+    // interpolation. With spacing = (T-1)/(M-1), sigma ≈ spacing gives
+    // good overlap between adjacent basis functions.
+    float spacing = (M > 1) ? static_cast<float>(T - 1) / (M - 1) : 1.0f;
+    float sigma = spacing;
 
     Eigen::MatrixXf K(T, M);
     Eigen::MatrixXf Kmm(M, M);
@@ -150,29 +159,27 @@ public:
       d_initial_state_,
       d_u_nom_,
       d_noise_interp_,
+      d_u_applied_,
       d_costs_
       );
     HANDLE_ERROR(cudaGetLastError());
 
-        // 4. Weights
+    // Compute softmax weights
     std::vector<float> h_costs(config_.num_samples);
     HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_, config_.num_samples * sizeof(float),
         cudaMemcpyDeviceToHost));
-    float min_cost = h_costs[0];
-    for(float c : h_costs) {
-      if(c < min_cost) {
-        min_cost = c;
-      }
-    }
+
+    const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
+
     std::vector<float> h_weights(config_.num_samples);
     float sum_weights = 0.0f;
     for(int k = 0; k < config_.num_samples; ++k) {
-      float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
+      const float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
       h_weights[k] = w;
       sum_weights += w;
     }
-    for(int k = 0; k < config_.num_samples; ++k) {
-      h_weights[k] /= sum_weights;
+    for(float& w : h_weights) {
+      w /= sum_weights;
     }
 
         // 5. Update Theta
@@ -188,13 +195,12 @@ public:
       d_weights_,
       config_.num_samples,
       num_params,
-      1.0f
+      config_
       );
 
-        // 6. Update U_nom (interpolate new theta)
-        // Single trajectory interpolation
-        // u_nom = W * theta
-    interpolate_single_kernel << < 1, 1 >> > (   // Parallelize over nu
+    // Interpolate updated theta to get u_nom = W * theta
+    const int interp_threads = (config_.horizon * config_.nu + 255) / 256;
+    interpolate_single_kernel<<<interp_threads, 256>>>(
       d_theta_,
       d_interp_matrix_,
       d_u_nom_,
@@ -202,6 +208,12 @@ public:
       config_.num_support_pts,
       config_.nu
       );
+  }
+
+  void set_applied_control(const Eigen::VectorXf& u) {
+    HANDLE_ERROR(cudaMemcpy(d_u_applied_, u.data(),
+                            config_.nu * sizeof(float),
+                            cudaMemcpyHostToDevice));
   }
 
   Eigen::VectorXf get_action()
@@ -226,6 +238,7 @@ private:
   float * d_costs_;
   float * d_initial_state_;
   float * d_weights_;
+  float * d_u_applied_;
 
   curandGenerator_t gen_;
 };
@@ -269,16 +282,17 @@ __global__ void interpolate_single_kernel(
   int T, int M, int nu
 )
 {
-    // Single thread is lazy, but fine for prototype. Should parallelize over nu/T.
-  for(int t = 0; t < T; ++t) {
-    for(int i = 0; i < nu; ++i) {
-      float sum = 0.0f;
-      for(int m = 0; m < M; ++m) {
-        sum += W[t * M + m] * theta[m * nu + i];
-      }
-      u_nom[t * nu + i] = sum;
-    }
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= T * nu) { return; }
+
+  int t = idx / nu;
+  int i = idx % nu;
+
+  float sum = 0.0f;
+  for (int m = 0; m < M; ++m) {
+    sum += W[t * M + m] * theta[m * nu + i];
   }
+  u_nom[idx] = sum;
 }
 
 } // namespace mppi

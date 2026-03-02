@@ -121,6 +121,7 @@ public:
       this->d_initial_state_,
       this->d_u_nom_,
       this->d_noise_,
+      this->d_u_applied_,
       this->d_costs_);
     HANDLE_ERROR(cudaGetLastError());
     HANDLE_ERROR(cudaDeviceSynchronize());
@@ -174,7 +175,7 @@ public:
       this->d_weights_,
       this->config_.num_samples,
       num_params,
-      this->config_.learning_rate);
+      this->config_);
     HANDLE_ERROR(cudaGetLastError());
   }
 

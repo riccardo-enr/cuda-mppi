@@ -46,6 +46,13 @@ public:
     HANDLE_ERROR(cudaMemset(d_u_vel_, 0, config.horizon * config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_action_seq_, 0, config.horizon * config.nu * sizeof(float)));
 
+    HANDLE_ERROR(cudaMalloc(&d_u_applied_, config.nu * sizeof(float)));
+    HANDLE_ERROR(cudaMemset(d_u_applied_, 0, config.nu * sizeof(float)));
+
+    // Zero buffer used as u_nom placeholder in rollout
+    HANDLE_ERROR(cudaMalloc(&d_zeros_, config.horizon * config.nu * sizeof(float)));
+    HANDLE_ERROR(cudaMemset(d_zeros_, 0, config.horizon * config.nu * sizeof(float)));
+
     HANDLE_CURAND_ERROR(curandCreateGenerator(&gen_, CURAND_RNG_PSEUDO_DEFAULT));
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
   }
@@ -59,6 +66,8 @@ public:
     cudaFree(d_costs_);
     cudaFree(d_initial_state_);
     cudaFree(d_weights_);
+    cudaFree(d_u_applied_);
+    cudaFree(d_zeros_);
     curandDestroyGenerator(gen_);
   }
 
@@ -90,27 +99,17 @@ public:
       );
     HANDLE_ERROR(cudaGetLastError());
 
-        // 3. Rollout using perturbed actions
-        // We reuse rollout_kernel but treat d_perturbed_actions_ as "noise" added to a zero u_nom,
-        // OR modify rollout_kernel to take explicit actions.
-        // Let's assume we pass d_perturbed_actions_ as 'noise' and 0 as 'u_nom'.
-        // Wait, rollout_kernel does: u = u_nom + noise.
-        // So if we pass u_nom=0 (we need a zero buffer) and noise=d_perturbed_actions_, it works.
-        // I need a zero buffer.
-    float * d_zeros;
-    HANDLE_ERROR(cudaMalloc(&d_zeros, config_.horizon * config_.nu * sizeof(float)));
-    HANDLE_ERROR(cudaMemset(d_zeros, 0, config_.horizon * config_.nu * sizeof(float)));
-
+    // Rollout with perturbed actions (u_nom=0, noise=perturbed_actions → u = 0 + actions)
     kernels::rollout_kernel << < grid, block >> > (
       dynamics_,
       cost_,
       config_,
       d_initial_state_,
-      d_zeros,                   // u_nom = 0
-      d_perturbed_actions_,       // acts as full u
+      d_zeros_,
+      d_perturbed_actions_,
+      d_u_applied_,
       d_costs_
       );
-    cudaFree(d_zeros);     // Inefficient alloc/free every loop, but okay for prototype.
 
         // 4. Add smoothness cost
         // Kernel to compute diffs and add to d_costs_
@@ -120,30 +119,23 @@ public:
       config_
       );
 
-        // 5. Weights & Update (simplified host side for now)
+    // Compute softmax weights
     std::vector<float> h_costs(config_.num_samples);
     HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_, config_.num_samples * sizeof(float),
         cudaMemcpyDeviceToHost));
 
-    float min_cost = h_costs[0];
-    for(float c : h_costs) {
-      if(c < min_cost) {
-        min_cost = c;
-      }
-    }
+    const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
 
     std::vector<float> h_weights(config_.num_samples);
     float sum_weights = 0.0f;
     for(int k = 0; k < config_.num_samples; ++k) {
-      float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
+      const float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
       h_weights[k] = w;
       sum_weights += w;
     }
-    for(int k = 0; k < config_.num_samples; ++k) {
-      h_weights[k] /= sum_weights;
+    for(float& w : h_weights) {
+      w /= sum_weights;
     }
-
-        // Update u_vel
     HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(), config_.num_samples * sizeof(float),
         cudaMemcpyHostToDevice));
 
@@ -156,12 +148,12 @@ public:
       d_weights_,
       config_.num_samples,
       num_params,
-      1.0f
+      config_
       );
 
-        // Update action_sequence (integrate new u_vel)
-        // Similar to integrate_actions_kernel but for single trajectory (K=1)
-    integrate_single_action_kernel << < 1, 1 >> > (
+    // Integrate updated u_vel into action sequence
+    const int interp_threads = (config_.horizon * config_.nu + 255) / 256;
+    integrate_single_action_kernel<<<interp_threads, 256>>>(
       d_action_seq_,
       d_u_vel_,
       config_
@@ -170,19 +162,18 @@ public:
 
   void shift()
   {
-        // Shift u_vel and action_seq
-    int shift_floats = config_.nu;
-    int total_floats = config_.horizon * config_.nu;
-    int copy_floats = total_floats - shift_floats;
-    int threads = 256;
-    int blocks = (copy_floats + threads - 1) / threads;
+    const int total_floats = config_.horizon * config_.nu;
+    const int threads = 256;
+    const int blocks = (total_floats + threads - 1) / threads;
 
-    shift_kernel << < blocks, threads >> > (d_u_vel_, config_.horizon, config_.nu);
+    shift_kernel<<<blocks, threads>>>(d_u_vel_, config_.horizon, config_.nu);
+    shift_kernel<<<blocks, threads>>>(d_action_seq_, config_.horizon, config_.nu);
+  }
 
-        // For action sequence, we might need special shift logic (hold last value),
-        // but for now let's reuse shift_kernel which zeroes/cycles.
-        // Ideally we should implement proper SMPPI shifting.
-    shift_kernel << < blocks, threads >> > (d_action_seq_, config_.horizon, config_.nu);
+  void set_applied_control(const Eigen::VectorXf& u) {
+    HANDLE_ERROR(cudaMemcpy(d_u_applied_, u.data(),
+                            config_.nu * sizeof(float),
+                            cudaMemcpyHostToDevice));
   }
 
   Eigen::VectorXf get_action()
@@ -207,6 +198,8 @@ private:
   float * d_costs_;
   float * d_initial_state_;
   float * d_weights_;
+  float * d_u_applied_;
+  float * d_zeros_;
 
   curandGenerator_t gen_;
 };
@@ -262,13 +255,10 @@ __global__ void integrate_single_action_kernel(
   MPPIConfig config
 )
 {
-    // Single thread
-  for (int t = 0; t < config.horizon; ++t) {
-    for (int i = 0; i < config.nu; ++i) {
-      int idx = t * config.nu + i;
-      action_seq[idx] = action_seq[idx] + u_vel[idx] * config.dt;
-    }
-  }
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= config.horizon * config.nu) { return; }
+
+  action_seq[idx] += u_vel[idx] * config.dt;
 }
 
 __global__ void smoothness_cost_kernel(

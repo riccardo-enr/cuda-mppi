@@ -51,7 +51,7 @@ __global__ void compute_info_gain_grid_kernel(
 
   float state[4] = {x_idx * resolution, y_idx * resolution, 0.0f, 0.0f};
   float u[2] = {0.0f, 0.0f};
-  output[y_idx * width + x_idx] = cost.compute(state, u, 0);
+  output[y_idx * width + x_idx] = cost.compute(state, u, u, 0);
 }
 
 void save_info_gain_map(

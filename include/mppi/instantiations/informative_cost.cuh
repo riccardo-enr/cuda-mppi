@@ -78,7 +78,8 @@ struct InformativeCost
   int          ref_horizon = 0;
 
     // -----------------------------------------------------------------------
-  __device__ float compute(const float * x, const float * u, int t) const
+  __device__ float compute(const float * x, const float * u,
+                           const float * /*u_prev*/, int t) const
   {
     float cost = 0.0f;
     float px = x[0], py = x[1], pz = x[2];

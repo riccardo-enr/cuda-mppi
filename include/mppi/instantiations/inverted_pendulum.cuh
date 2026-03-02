@@ -65,7 +65,8 @@ struct InvertedPendulum
 
 struct PendulumCost
 {
-  __host__ __device__ float compute(const float * state, const float * u, int t) const
+  __host__ __device__ float compute(const float * state, const float * u,
+                                    const float * /*u_prev*/, int t) const
   {
     float x = state[0];
     float theta = state[1];
