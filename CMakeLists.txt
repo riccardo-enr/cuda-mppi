@@ -16,8 +16,11 @@ add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 find_package(Eigen3 REQUIRED)
 find_package(CUDAToolkit REQUIRED)
-find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
-find_package(nanobind CONFIG REQUIRED)
+find_package(GTest REQUIRED)
+find_package(Python 3.12 COMPONENTS Interpreter Development.Module QUIET)
+find_package(nanobind CONFIG QUIET)
+
+enable_testing()
 
 # Gather sources
 file(GLOB_RECURSE SOURCES "src/*.cu" "src/*.cpp")
@@ -47,11 +50,12 @@ target_include_directories(cuda_mppi_lib INTERFACE
 )
 
 # Python Extension (this will be jax_mppi.cuda_mppi)
-nanobind_add_module(cuda_mppi bindings/bindings.cu ${JIT_SOURCES})
-target_link_libraries(cuda_mppi PRIVATE cuda_mppi_lib)
+if(nanobind_FOUND AND Python_FOUND)
+  nanobind_add_module(cuda_mppi bindings/bindings.cu ${JIT_SOURCES})
+  target_link_libraries(cuda_mppi PRIVATE cuda_mppi_lib)
+  install(TARGETS cuda_mppi DESTINATION .)
+endif()
 
-# Install into the python package
-install(TARGETS cuda_mppi DESTINATION .)
 install(DIRECTORY include/mppi DESTINATION include)
 
 # Example executable to verify build (disabled due to Eigen/CUDA compatibility warnings)
@@ -74,3 +78,16 @@ target_link_libraries(fsmi_unit_test PRIVATE cuda_mppi_lib)
 # Full informative simulation (quadrotor + FSMI + info field)
 add_executable(informative_sim src/informative_sim.cu)
 target_link_libraries(informative_sim PRIVATE cuda_mppi_lib)
+
+# GTest-based MPPI tests
+add_executable(mppi_gtest src/mppi_gtest.cu)
+target_link_libraries(mppi_gtest PRIVATE cuda_mppi_lib GTest::gtest_main)
+target_include_directories(mppi_gtest PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include)
+add_test(NAME mppi_gtest COMMAND mppi_gtest)
+
+# Trajectory logging for visualization
+add_executable(mppi_log_trajectories src/mppi_log_trajectories.cu)
+target_link_libraries(mppi_log_trajectories PRIVATE cuda_mppi_lib)
+target_include_directories(mppi_log_trajectories PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include)

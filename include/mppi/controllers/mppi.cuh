@@ -96,8 +96,7 @@ class MPPIController {
                             config_.num_samples * sizeof(float),
                             cudaMemcpyDeviceToHost));
 
-    const float min_cost =
-        *std::min_element(h_costs.begin(), h_costs.end());
+    const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
 
     std::vector<float> h_weights(config_.num_samples);
     float sum_weights = 0.0f;
@@ -122,7 +121,6 @@ class MPPIController {
                                                 config_.num_samples, num_params,
                                                 config_);
     HANDLE_ERROR(cudaGetLastError());
-
   }
 
   void shift() {
