@@ -16,40 +16,33 @@ add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 find_package(Eigen3 REQUIRED)
 find_package(CUDAToolkit REQUIRED)
-find_package(GTest REQUIRED)
 find_package(Python 3.12 COMPONENTS Interpreter Development.Module QUIET)
 find_package(nanobind CONFIG QUIET)
 
 enable_testing()
 
-# Gather sources
-file(GLOB_RECURSE SOURCES "src/*.cu" "src/*.cpp")
-file(GLOB_RECURSE HEADERS "include/*.cuh" "include/*.h" "include/*.hpp")
-
-# JIT compiler sources (these need to be compiled separately)
+# JIT compiler sources (compiled into the Python extension)
 set(JIT_SOURCES
     src/jit/jit_compiler.cpp
     src/jit/jit_mppi_controller.cpp
 )
 
-# Define header-only library (renamed to avoid conflict with extension)
+# Header-only library
 add_library(cuda_mppi_lib INTERFACE)
 
-# Interface dependencies
 target_link_libraries(cuda_mppi_lib INTERFACE
     Eigen3::Eigen
     CUDA::curand
     CUDA::nvrtc
     CUDA::cuda_driver
 )
-# Interface include directories
 target_include_directories(cuda_mppi_lib INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${EIGEN3_INCLUDE_DIR}
 )
 
-# Python Extension (this will be jax_mppi.cuda_mppi)
+# Python extension
 if(nanobind_FOUND AND Python_FOUND)
   nanobind_add_module(cuda_mppi bindings/bindings.cu ${JIT_SOURCES})
   target_link_libraries(cuda_mppi PRIVATE cuda_mppi_lib)
@@ -58,36 +51,24 @@ endif()
 
 install(DIRECTORY include/mppi DESTINATION include)
 
-# Example executable to verify build (disabled due to Eigen/CUDA compatibility warnings)
-# add_executable(mppi_test src/main_test.cu)
-# target_link_libraries(mppi_test PRIVATE cuda_mppi_lib)
+# Cross-repo dependency (for tests/examples that use uav_control headers)
+set(UAV_CONTROL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include"
+    CACHE PATH "Path to uav_control headers")
 
-add_executable(pendulum_test src/pendulum_test.cu)
-target_link_libraries(pendulum_test PRIVATE cuda_mppi_lib)
+# Build options — disabled under scikit-build-core (pip install)
+if(DEFINED SKBUILD)
+  option(CUDA_MPPI_BUILD_TESTS "Build tests" OFF)
+  option(CUDA_MPPI_BUILD_EXAMPLES "Build examples" OFF)
+else()
+  option(CUDA_MPPI_BUILD_TESTS "Build tests" ON)
+  option(CUDA_MPPI_BUILD_EXAMPLES "Build examples" ON)
+endif()
 
-add_executable(i_mppi_test src/i_mppi_test.cu)
-target_link_libraries(i_mppi_test PRIVATE cuda_mppi_lib)
+if(CUDA_MPPI_BUILD_TESTS)
+  find_package(GTest REQUIRED)
+  add_subdirectory(tests)
+endif()
 
-add_executable(i_mppi_sim src/i_mppi_sim.cu)
-target_link_libraries(i_mppi_sim PRIVATE cuda_mppi_lib)
-
-# FSMI unit tests
-add_executable(fsmi_unit_test src/fsmi_unit_test.cu)
-target_link_libraries(fsmi_unit_test PRIVATE cuda_mppi_lib)
-
-# Full informative simulation (quadrotor + FSMI + info field)
-add_executable(informative_sim src/informative_sim.cu)
-target_link_libraries(informative_sim PRIVATE cuda_mppi_lib)
-
-# GTest-based MPPI tests
-add_executable(mppi_gtest src/mppi_gtest.cu)
-target_link_libraries(mppi_gtest PRIVATE cuda_mppi_lib GTest::gtest_main)
-target_include_directories(mppi_gtest PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include)
-add_test(NAME mppi_gtest COMMAND mppi_gtest)
-
-# Trajectory logging for visualization
-add_executable(mppi_log_trajectories src/mppi_log_trajectories.cu)
-target_link_libraries(mppi_log_trajectories PRIVATE cuda_mppi_lib)
-target_include_directories(mppi_log_trajectories PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include)
+if(CUDA_MPPI_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()

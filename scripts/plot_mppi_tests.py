@@ -7,7 +7,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-LOG_DIR = Path(__file__).parent.parent / "build" / "test_logs"
+CSV_DIR = Path(__file__).parent.parent / "data" / "csv"
+PLOT_DIR = Path(__file__).parent.parent / "data" / "plots"
 
 
 def plot_di_convergence():
@@ -18,7 +19,7 @@ def plot_di_convergence():
     colors = {"MPPI": "#1f77b4", "SMPPI": "#ff7f0e", "KMPPI": "#2ca02c"}
 
     for name, color in colors.items():
-        f = LOG_DIR / f"di_{name}.csv"
+        f = CSV_DIR / f"di_{name}.csv"
         if not f.exists():
             print(f"  Skipping {f} (not found)")
             continue
@@ -65,13 +66,13 @@ def plot_di_convergence():
     axes[1, 1].grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(LOG_DIR / "di_convergence.png", dpi=150)
+    fig.savefig(PLOT_DIR / "di_convergence.png", dpi=150)
     print("  Saved di_convergence.png")
 
 
 def plot_3d_tracking(csv_name, title, has_ref=True):
     """Plot 3D position tracking + controls (using 2D projections)."""
-    f = LOG_DIR / f"{csv_name}.csv"
+    f = CSV_DIR / f"{csv_name}.csv"
     if not f.exists():
         print(f"  Skipping {f} (not found)")
         return
@@ -167,14 +168,15 @@ def plot_3d_tracking(csv_name, title, has_ref=True):
     ax_err.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(LOG_DIR / f"{csv_name}.png", dpi=150)
+    fig.savefig(PLOT_DIR / f"{csv_name}.png", dpi=150)
     print(f"  Saved {csv_name}.png")
 
 
 def main():
-    if not LOG_DIR.exists():
-        print(f"Error: {LOG_DIR} does not exist. Run mppi_log_trajectories first.")
+    if not CSV_DIR.exists():
+        print(f"Error: {CSV_DIR} does not exist. Run mppi_log_trajectories first.")
         sys.exit(1)
+    PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
     print("Plotting DoubleIntegrator convergence...")
     plot_di_convergence()
@@ -188,7 +190,7 @@ def main():
     print("Plotting hover fallback...")
     plot_3d_tracking("hover_fallback", "Hover at Origin (nullptr fallback)", has_ref=False)
 
-    print(f"\nAll plots saved to {LOG_DIR}/")
+    print(f"\nAll plots saved to {PLOT_DIR}/")
 
 
 if __name__ == "__main__":

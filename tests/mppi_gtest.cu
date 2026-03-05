@@ -8,6 +8,7 @@
 #include "mppi/controllers/kmppi.cuh"
 #include "mppi/instantiations/double_integrator.cuh"
 #include "mppi/instantiations/point_mass_3d.cuh"
+#include "mppi/instantiations/quadrotor.cuh"
 #include "uav_control/mppi/acceleration_cost.cuh"
 
 using namespace mppi;
@@ -590,4 +591,210 @@ TEST(TrajectoryTracking, ControlBounded) {
   float final_dist = (state.head<3>() - goal_pos).norm();
   EXPECT_LT(final_dist, 1.5f)
       << "Did not track while keeping bounded controls. Dist: " << final_dist;
+}
+
+// ===========================================================================
+// Acceleration-on-Quadrotor Tests
+// MPPI plans with PointMass3D, simulation runs on full QuadrotorDynamics
+// ===========================================================================
+
+// Extract 6D PointMass3D state [px,py,pz,vx,vy,vz] from 13D quadrotor state
+static Eigen::VectorXf extract_pm3d_state(const Eigen::VectorXf& quad_state) {
+  return quad_state.head<6>();
+}
+
+// Clamp MPPI acceleration output to PointMass3D bounds.
+// MPPI outputs unclamped actions (dynamics clamp internally during rollouts).
+static Eigen::VectorXf clamp_acc(const Eigen::VectorXf& acc, const PointMass3D& dyn) {
+  Eigen::VectorXf clamped(3);
+  for (int i = 0; i < 3; ++i) {
+    clamped(i) = std::fmin(std::fmax(acc(i), -dyn.a_max[i]), dyn.a_max[i]);
+  }
+  return clamped;
+}
+
+// Convert PointMass3D acceleration [ax,ay,az] (NED, gravity-free) to
+// QuadrotorDynamics control [T, wx_cmd, wy_cmd, wz_cmd].
+//
+// The PointMass3D model assumes PX4 handles gravity, so the acceleration
+// command represents desired world-frame acceleration *without* gravity.
+// The full quadrotor must produce thrust to achieve a_desired + [0,0,g].
+static Eigen::VectorXf acc_to_quad_control(
+    const Eigen::VectorXf& quad_state,
+    const Eigen::VectorXf& acc_cmd,
+    float mass, float gravity, float K_att)
+{
+  // Thrust force in world NED frame:
+  // QuadrotorDynamics: v_dot = R * [0,0,-T] / mass + [0,0,g]
+  // PointMass3D: v_dot = a_cmd  (gravity handled by PX4)
+  // So: R * [0,0,-T] / mass = a_cmd - [0,0,g]
+  Eigen::Vector3f F_thrust = mass * Eigen::Vector3f(
+      acc_cmd(0), acc_cmd(1), acc_cmd(2) - gravity);
+
+  // Thrust magnitude
+  float T = F_thrust.norm();
+  T = std::fmax(T, 0.5f);  // avoid singularity at zero thrust
+
+  // Desired body Z axis (FRD): thrust acts along body -Z,
+  // so body +Z = -F_thrust / ||F_thrust|| (points opposite to thrust)
+  Eigen::Vector3f z_des = -F_thrust / T;
+
+  // Build desired rotation matrix (zero yaw).
+  // x_des = y_world x z_des (with y_world = [0,1,0] in NED)
+  // If z_des is near [0,1,0], fall back to x_world = [1,0,0]
+  Eigen::Vector3f y_world(0.0f, 1.0f, 0.0f);
+  Eigen::Vector3f x_des = y_world.cross(z_des);
+  float x_norm = x_des.norm();
+  if (x_norm < 1e-4f) {
+    Eigen::Vector3f x_world(1.0f, 0.0f, 0.0f);
+    x_des = x_world;
+    Eigen::Vector3f y_des_tmp = z_des.cross(x_des).normalized();
+    x_des = y_des_tmp.cross(z_des).normalized();
+  } else {
+    x_des /= x_norm;
+  }
+  Eigen::Vector3f y_des = z_des.cross(x_des);
+
+  Eigen::Matrix3f R_des;
+  R_des.col(0) = x_des;
+  R_des.col(1) = y_des;
+  R_des.col(2) = z_des;
+
+  Eigen::Quaternionf q_des(R_des);
+  q_des.normalize();
+
+  // Current attitude from quadrotor state
+  Eigen::Quaternionf q_cur(quad_state(6), quad_state(7),
+                           quad_state(8), quad_state(9));
+  q_cur.normalize();
+
+  // Attitude error: q_err rotates from current to desired
+  Eigen::Quaternionf q_err = q_des * q_cur.inverse();
+  if (q_err.w() < 0.0f) {
+    q_err.coeffs() = -q_err.coeffs();
+  }
+
+  // Proportional rate command from angle-axis error
+  Eigen::AngleAxisf aa(q_err);
+  Eigen::Vector3f w_cmd = K_att * aa.angle() * aa.axis();
+
+  Eigen::VectorXf control(4);
+  control << T, w_cmd(0), w_cmd(1), w_cmd(2);
+  return control;
+}
+
+TEST(TrajectoryTracking, AccOnQuadrotorHover) {
+  auto config = make_acc_config();
+  config.num_samples = 2048;
+
+  PointMass3D dyn;
+  AccelerationTrackingCost cost;
+  cost.Q_pos = 15.0f;
+  cost.Q_vel = 2.0f;
+  cost.R_acc = 0.01f;
+  cost.R_du  = 0.1f;
+  cost.terminal_multiplier = 15.0f;
+
+  // Reference: hold position [2, -1, -1] (2m N, 1m W, 1m up in NED)
+  DeviceRefTrajectory ref;
+  float goal[6] = {2.0f, -1.0f, -1.0f, 0.0f, 0.0f, 0.0f};
+  ref.set_constant(goal, config.horizon);
+  cost.ref_traj = ref.d_ptr;
+  cost.ref_horizon = ref.horizon;
+
+  MPPIController<PointMass3D, AccelerationTrackingCost> ctrl(config, dyn, cost);
+
+  // Full quadrotor simulation: start at origin, level, at rest
+  QuadrotorDynamics quad;
+  Eigen::VectorXf quad_state(13);
+  quad_state << 0.0f, 0.0f, 0.0f,       // position
+                0.0f, 0.0f, 0.0f,       // velocity
+                1.0f, 0.0f, 0.0f, 0.0f, // quaternion (identity)
+                0.0f, 0.0f, 0.0f;       // angular velocity
+
+  Eigen::Vector3f goal_pos(goal[0], goal[1], goal[2]);
+  float initial_dist = (quad_state.head<3>() - goal_pos).norm();
+
+  const float K_att = 8.0f;
+  const int sim_steps = 300;
+  for (int t = 0; t < sim_steps; ++t) {
+    Eigen::VectorXf pm_state = extract_pm3d_state(quad_state);
+    ctrl.compute(pm_state);
+    // Clamp to PointMass3D bounds (MPPI outputs unclamped nominal actions;
+    // dynamics clamp internally during rollouts but raw output may exceed)
+    Eigen::VectorXf acc_action = clamp_acc(ctrl.get_action(), dyn);
+    ctrl.set_applied_control(acc_action);
+    ctrl.shift();
+
+    Eigen::VectorXf quad_control = acc_to_quad_control(
+        quad_state, acc_action, quad.mass, quad.gravity, K_att);
+    quad.step_host(quad_state, quad_control, config.dt);
+  }
+
+  float final_dist = (quad_state.head<3>() - goal_pos).norm();
+  float final_vel = quad_state.segment<3>(3).norm();
+  EXPECT_LT(final_dist, 1.5f)
+      << "AccOnQuadrotor hover did not converge. "
+      << "Initial dist: " << initial_dist
+      << ", final dist: " << final_dist
+      << ", final pos: " << quad_state.head<3>().transpose()
+      << ", goal: " << goal_pos.transpose();
+  EXPECT_LT(final_vel, 1.0f)
+      << "Velocity did not settle. Final vel: "
+      << quad_state.segment<3>(3).transpose();
+}
+
+TEST(TrajectoryTracking, AccOnQuadrotorWaypoint) {
+  auto config = make_acc_config();
+  config.num_samples = 2048;
+
+  PointMass3D dyn;
+  AccelerationTrackingCost cost;
+  cost.Q_pos = 15.0f;
+  cost.Q_vel = 2.0f;
+  cost.R_acc = 0.01f;
+  cost.R_du  = 0.1f;
+  cost.terminal_multiplier = 15.0f;
+
+  // Reference: fly to [3, 2, -1] (3m N, 2m E, 1m up in NED)
+  DeviceRefTrajectory ref;
+  float goal[6] = {3.0f, 2.0f, -1.0f, 0.0f, 0.0f, 0.0f};
+  ref.set_constant(goal, config.horizon);
+  cost.ref_traj = ref.d_ptr;
+  cost.ref_horizon = ref.horizon;
+
+  MPPIController<PointMass3D, AccelerationTrackingCost> ctrl(config, dyn, cost);
+
+  // Start at origin, level, at rest
+  QuadrotorDynamics quad;
+  Eigen::VectorXf quad_state(13);
+  quad_state << 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 0.0f,
+                1.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 0.0f;
+
+  Eigen::Vector3f goal_pos(goal[0], goal[1], goal[2]);
+
+  const float K_att = 8.0f;
+  const int sim_steps = 500;
+  for (int t = 0; t < sim_steps; ++t) {
+    Eigen::VectorXf pm_state = extract_pm3d_state(quad_state);
+    ctrl.compute(pm_state);
+    Eigen::VectorXf acc_action = clamp_acc(ctrl.get_action(), dyn);
+    ctrl.set_applied_control(acc_action);
+    ctrl.shift();
+
+    Eigen::VectorXf quad_control = acc_to_quad_control(
+        quad_state, acc_action, quad.mass, quad.gravity, K_att);
+    quad.step_host(quad_state, quad_control, config.dt);
+  }
+
+  float final_dist = (quad_state.head<3>() - goal_pos).norm();
+  float initial_dist = goal_pos.norm();  // started at origin
+  EXPECT_LT(final_dist, initial_dist * 0.5f)
+      << "AccOnQuadrotor waypoint tracking did not converge. "
+      << "Initial dist: " << initial_dist
+      << ", final dist: " << final_dist
+      << ", final pos: " << quad_state.head<3>().transpose()
+      << ", goal: " << goal_pos.transpose();
 }

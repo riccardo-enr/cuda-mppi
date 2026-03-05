@@ -246,7 +246,7 @@ void log_hover(const std::string& dir) {
 }
 
 int main() {
-  std::string dir = "test_logs";
+  std::string dir = DATA_DIR "/csv";
   system(("mkdir -p " + dir).c_str());
 
   std::cout << "Logging DoubleIntegrator convergence..." << std::endl;

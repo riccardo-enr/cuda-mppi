@@ -52,7 +52,6 @@ class MPPIController {
 
   ~MPPIController() {
     cudaFree(d_u_nom_);
-    cudaFree(d_noise_);
     cudaFree(d_costs_);
     cudaFree(d_initial_state_);
     cudaFree(d_weights_);
