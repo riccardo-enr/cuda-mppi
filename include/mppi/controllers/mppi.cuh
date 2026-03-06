@@ -6,6 +6,7 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "mppi/core/kernels.cuh"
@@ -18,6 +19,11 @@ __global__ void weighted_update_kernel(float* u_nom, const float* noise,
                                        const float* weights, int K,
                                        int total_params,  // T * nu
                                        MPPIConfig config);
+
+__global__ void weighted_mean_kernel(float* u_nom, const float* noise,
+                                     const float* weights, int K,
+                                     int total_params,  // T * nu
+                                     MPPIConfig config);
 
 __global__ void shift_kernel(float* u_nom, int T, int nu);
 
@@ -75,51 +81,75 @@ class MPPIController {
                             config_.nx * sizeof(float),
                             cudaMemcpyHostToDevice));
 
-    // Sample N(0,1) noise — per-dimension sigma is applied in the kernels
-    HANDLE_CURAND_ERROR(curandGenerateNormal(
-        gen_, d_noise_, config_.num_samples * config_.horizon * config_.nu,
-        0.0f, 1.0f));
-
-    // Launch Rollout Kernel
-    dim3 block(256);
-    dim3 grid((config_.num_samples + block.x - 1) / block.x);
-
-    kernels::rollout_kernel<<<grid, block>>>(dynamics_, cost_, config_,
-                                             d_initial_state_, d_u_nom_,
-                                             d_noise_, d_u_applied_, d_costs_);
-    HANDLE_ERROR(cudaGetLastError());
-
-    // Compute softmax weights on host, then upload for GPU-side control update
+    const int num_iters = config_.num_iters > 0 ? config_.num_iters : 1;
     std::vector<float> h_costs(config_.num_samples);
-    HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_,
-                            config_.num_samples * sizeof(float),
-                            cudaMemcpyDeviceToHost));
-
-    const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
-
     std::vector<float> h_weights(config_.num_samples);
-    float sum_weights = 0.0f;
-    for (int k = 0; k < config_.num_samples; ++k) {
-      const float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
-      h_weights[k] = w;
-      sum_weights += w;
+
+    for (int iter = 0; iter < num_iters; ++iter) {
+      // Build per-iteration config with decayed sigma
+      MPPIConfig iter_config = config_;
+      if (config_.std_dev_decay < 1.0f && iter > 0) {
+        float decay = powf(config_.std_dev_decay, static_cast<float>(iter));
+        for (int i = 0; i < config_.nu; ++i) {
+          iter_config.control_sigma[i] = config_.control_sigma[i] * decay;
+        }
+      }
+
+      // Sample N(0,1) noise
+      HANDLE_CURAND_ERROR(curandGenerateNormal(
+          gen_, d_noise_,
+          config_.num_samples * config_.horizon * config_.nu, 0.0f, 1.0f));
+
+      // Launch Rollout Kernel
+      dim3 block(256);
+      dim3 grid((config_.num_samples + block.x - 1) / block.x);
+
+      kernels::rollout_kernel<<<grid, block>>>(
+          dynamics_, cost_, iter_config, d_initial_state_, d_u_nom_, d_noise_,
+          d_u_applied_, d_costs_);
+      HANDLE_ERROR(cudaGetLastError());
+
+      // Compute softmax weights on host
+      HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_,
+                              config_.num_samples * sizeof(float),
+                              cudaMemcpyDeviceToHost));
+
+      const float min_cost =
+          *std::min_element(h_costs.begin(), h_costs.end());
+
+      float sum_weights = 0.0f;
+      for (int k = 0; k < config_.num_samples; ++k) {
+        const float w =
+            expf(-(h_costs[k] - min_cost) / iter_config.lambda);
+        h_weights[k] = w;
+        sum_weights += w;
+      }
+      for (float& w : h_weights) {
+        w /= sum_weights;
+      }
+
+      HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(),
+                              config_.num_samples * sizeof(float),
+                              cudaMemcpyHostToDevice));
+
+      int num_params = config_.horizon * config_.nu;
+      int threads = 256;
+      int blocks = (num_params + threads - 1) / threads;
+
+      if (num_iters > 1) {
+        // Multi-iteration: replace u_nom with weighted mean of samples
+        weighted_mean_kernel<<<blocks, threads>>>(
+            d_u_nom_, d_noise_, d_weights_, config_.num_samples, num_params,
+            iter_config);
+      } else {
+        // Single iteration: additive update (original behavior)
+        weighted_update_kernel<<<blocks, threads>>>(
+            d_u_nom_, d_noise_, d_weights_, config_.num_samples, num_params,
+            iter_config);
+      }
+      HANDLE_ERROR(cudaGetLastError());
+      HANDLE_ERROR(cudaDeviceSynchronize());
     }
-    for (float& w : h_weights) {
-      w /= sum_weights;
-    }
-
-    HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(),
-                            config_.num_samples * sizeof(float),
-                            cudaMemcpyHostToDevice));
-
-    int num_params = config_.horizon * config_.nu;
-    int threads = 256;
-    int blocks = (num_params + threads - 1) / threads;
-
-    weighted_update_kernel<<<blocks, threads>>>(d_u_nom_, d_noise_, d_weights_,
-                                                config_.num_samples, num_params,
-                                                config_);
-    HANDLE_ERROR(cudaGetLastError());
   }
 
   void shift() {
@@ -186,6 +216,29 @@ __global__ void weighted_update_kernel(float* u_nom, const float* noise,
   }
 
   u_nom[idx] += config.learning_rate * sum;
+}
+
+// Weighted mean update: u_nom = Σ w_k * (u_nom + noise_k * sigma)
+// For multi-iteration refinement where we replace the mean each iteration.
+__global__ void weighted_mean_kernel(float* u_nom, const float* noise,
+                                     const float* weights, int K,
+                                     int total_params,
+                                     MPPIConfig config) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_params) {
+    return;
+  }
+
+  float sigma = config.control_sigma[idx % config.nu];
+  float current = u_nom[idx];
+
+  float sum = 0.0f;
+  for (int k = 0; k < K; ++k) {
+    float sample = current + noise[k * total_params + idx] * sigma;
+    sum += weights[k] * sample;
+  }
+
+  u_nom[idx] = sum;
 }
 
 __global__ void shift_kernel(float* u_nom, int T, int nu) {

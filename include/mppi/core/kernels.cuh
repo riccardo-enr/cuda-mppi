@@ -45,16 +45,21 @@ __global__ void rollout_kernel(
   float total_cost = 0.0f;
 
   for (int t = 0; t < config.horizon; ++t) {
-    // Compute control u = u_nom[t] + noise[k, t]
+    // Compute control: perturbed (most samples) or pure noise (exploration)
+    const bool pure_noise =
+        config.pure_noise_percentage > 0.0f &&
+        k >= static_cast<int>((1.0f - config.pure_noise_percentage) *
+                              config.num_samples);
+
     for (int i = 0; i < config.nu; ++i) {
-      // noise index: k * (T * nu) + t * nu + i
       int noise_idx = k * (config.horizon * config.nu) + t * config.nu + i;
       float n_val = noise[noise_idx] * config.control_sigma[i];
 
-      // u_nom index: t * nu + i
-      float u_val = u_nom[t * config.nu + i] + n_val;
-
-      u[i] = u_val;
+      if (pure_noise) {
+        u[i] = n_val;  // Zero-mean exploration
+      } else {
+        u[i] = u_nom[t * config.nu + i] + n_val;
+      }
     }
 
     // Step dynamics
@@ -62,6 +67,17 @@ __global__ void rollout_kernel(
 
     // Compute cost (with rate-of-change via u_prev)
     total_cost += cost.compute(x, u, u_prev, t);
+
+    // Likelihood ratio cost (importance sampling correction)
+    if (config.alpha < 1.0f) {
+      float lr_cost = 0.0f;
+      for (int i = 0; i < config.nu; ++i) {
+        float m = u_nom[t * config.nu + i];
+        float s = config.control_sigma[i];
+        lr_cost += m * (m - 2.0f * u[i]) / (s * s);
+      }
+      total_cost += 0.5f * config.lambda * (1.0f - config.alpha) * lr_cost;
+    }
 
     // Update u_prev for next timestep
     for (int i = 0; i < config.nu; ++i) {

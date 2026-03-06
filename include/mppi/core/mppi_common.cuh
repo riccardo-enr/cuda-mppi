@@ -29,6 +29,13 @@ struct MPPIConfig
 
     // Update step size (standard MPPI = 1.0)
   float learning_rate = 1.0f;
+
+    // Iterative refinement
+  int num_iters = 1;                     // Optimization iterations per compute()
+  float std_dev_decay = 1.0f;            // Noise std dev decay per iteration
+
+    // Exploration
+  float pure_noise_percentage = 0.0f;    // Fraction of samples with zero-mean noise
 };
 
 } // namespace mppi
