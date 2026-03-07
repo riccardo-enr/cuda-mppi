@@ -53,8 +53,10 @@ struct InformativeCost
   float target_weight = 1.0f;     // reference trajectory tracking
   float goal_weight = 0.5f;       // goal attraction
 
-    // Goal position
-  float3 goal = {9.0f, 5.0f, -2.0f};
+    // Goal positions (multi-goal: attract to nearest viewpoint)
+  static constexpr int MAX_GOALS = 32;
+  float3 goals[MAX_GOALS] = {};
+  int num_goals = 1;
 
     // Obstacle / collision
   float collision_penalty = 1000.0f;
@@ -125,9 +127,14 @@ struct InformativeCost
       cost -= lambda_info * field_val;
     }
 
-        // 7. Goal attraction
-    float gx = px - goal.x, gy = py - goal.y, gz = pz - goal.z;
-    cost += goal_weight * sqrtf(gx * gx + gy * gy + gz * gz);
+        // 7. Goal attraction (min distance to nearest viewpoint)
+    float min_goal_dist = 1e10f;
+    for (int g = 0; g < num_goals; ++g) {
+      float gx = px - goals[g].x, gy = py - goals[g].y, gz = pz - goals[g].z;
+      float d = sqrtf(gx * gx + gy * gy + gz * gz);
+      if (d < min_goal_dist) min_goal_dist = d;
+    }
+    cost += goal_weight * min_goal_dist;
 
         // 8. Action regularization
     for (int i = 0; i < 4; ++i) {
@@ -142,9 +149,14 @@ struct InformativeCost
   {
     float px = x[0], py = x[1], pz = x[2];
 
-        // Strong goal attraction at terminal
-    float gx = px - goal.x, gy = py - goal.y, gz = pz - goal.z;
-    float goal_cost = 10.0f * sqrtf(gx * gx + gy * gy + gz * gz);
+        // Strong goal attraction at terminal (nearest viewpoint)
+    float min_goal_dist = 1e10f;
+    for (int g = 0; g < num_goals; ++g) {
+      float gx = px - goals[g].x, gy = py - goals[g].y, gz = pz - goals[g].z;
+      float d = sqrtf(gx * gx + gy * gy + gz * gz);
+      if (d < min_goal_dist) min_goal_dist = d;
+    }
+    float goal_cost = 10.0f * min_goal_dist;
 
         // Height penalty
     float dz = pz - target_altitude;
