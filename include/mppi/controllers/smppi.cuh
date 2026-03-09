@@ -139,6 +139,10 @@ public:
     HANDLE_ERROR(cudaMalloc(&d_zeros_, config.horizon * config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_zeros_, 0, config.horizon * config.nu * sizeof(float)));
 
+    // Reference bias buffer (for split sampling)
+    HANDLE_ERROR(cudaMalloc(&d_u_ref_, config.horizon * config.nu * sizeof(float)));
+    HANDLE_ERROR(cudaMemset(d_u_ref_, 0, config.horizon * config.nu * sizeof(float)));
+
     HANDLE_CURAND_ERROR(curandCreateGenerator(&gen_, CURAND_RNG_PSEUDO_DEFAULT));
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
   }
@@ -150,12 +154,52 @@ public:
     cudaFree(d_action_seq_);
     cudaFree(d_noise_vel_);
     cudaFree(d_perturbed_actions_);
+    cudaFree(d_u_ref_);
     cudaFree(d_costs_);
     cudaFree(d_initial_state_);
     cudaFree(d_weights_);
     cudaFree(d_u_applied_);
     cudaFree(d_zeros_);
     curandDestroyGenerator(gen_);
+  }
+
+  /**
+   * @brief Upload a reference control sequence for biased sampling.
+   *
+   * The reference is divided by control_sigma before uploading so that
+   * biased samples center at the actual u_ref after sigma scaling in rollout.
+   *
+   * @param u_ref Flattened reference controls $\in \mathbb{R}^{T \cdot n_u}$.
+   * @param bias_alpha Fraction of samples to bias (separate from config_.alpha
+   *                   to avoid LR cost issues with zeros u_nom).
+   */
+  void set_reference_sequence(const std::vector<float>& u_ref, float bias_alpha) {
+    int expected = config_.horizon * config_.nu;
+    if (static_cast<int>(u_ref.size()) != expected) {
+      return;
+    }
+    // Normalize by sigma: biased samples will be d_perturbed_actions_ which
+    // goes through rollout as u = 0 + perturbed * sigma, so we need
+    // u_ref_normalized = u_ref / sigma for the bias to produce correct values
+    std::vector<float> u_ref_norm(expected);
+    for (int t = 0; t < config_.horizon; ++t) {
+      for (int i = 0; i < config_.nu; ++i) {
+        float sigma = config_.control_sigma[i];
+        u_ref_norm[t * config_.nu + i] = u_ref[t * config_.nu + i] / sigma;
+      }
+    }
+    HANDLE_ERROR(cudaMemcpy(d_u_ref_, u_ref_norm.data(), expected * sizeof(float),
+                            cudaMemcpyHostToDevice));
+    has_ref_bias_ = true;
+    bias_alpha_ = bias_alpha;
+  }
+
+  /**
+   * @brief Clear the reference bias. All samples will explore freely.
+   */
+  void clear_reference_sequence() {
+    has_ref_bias_ = false;
+    bias_alpha_ = 0.0f;
   }
 
   /**
@@ -189,6 +233,22 @@ public:
       config_
       );
     HANDLE_ERROR(cudaGetLastError());
+
+    // Apply reference bias to alpha fraction of samples (split sampling)
+    // Uses d_action_seq_ as u_nom (the nominal integrated actions) and
+    // d_u_ref_ which has been sigma-normalized in set_reference_sequence()
+    if (has_ref_bias_ && bias_alpha_ > 0.0f) {
+      int num_biased = static_cast<int>(config_.num_samples * bias_alpha_);
+      int start_biased_idx = config_.num_samples - num_biased;
+      if (num_biased > 0) {
+        dim3 bias_block(256);
+        dim3 bias_grid((config_.num_samples + bias_block.x - 1) / bias_block.x);
+        kernels::apply_bias_kernel<<<bias_grid, bias_block>>>(
+            d_perturbed_actions_, d_action_seq_, d_u_ref_, config_.num_samples,
+            config_.horizon, config_.nu, start_biased_idx);
+        HANDLE_ERROR(cudaGetLastError());
+      }
+    }
 
     // Rollout with perturbed actions (u_nom=0, noise=perturbed_actions)
     kernels::rollout_kernel << < grid, block >> > (
@@ -292,11 +352,15 @@ private:
   float * d_noise_vel_;          ///< Velocity noise $[K \times T \times n_u]$.
   float * d_perturbed_actions_;  ///< Per-sample perturbed actions $[K \times T \times n_u]$.
 
+  float * d_u_ref_;          ///< Reference bias sequence $[T \times n_u]$ (sigma-normalized).
+
   float * d_costs_;          ///< Per-sample costs $[K]$.
   float * d_initial_state_;  ///< Current state $[n_x]$.
   float * d_weights_;        ///< Softmax weights $[K]$.
   float * d_u_applied_;      ///< Last applied control $[n_u]$.
   float * d_zeros_;          ///< Zero buffer (rollout placeholder) $[T \times n_u]$.
+  bool has_ref_bias_ = false; ///< Whether reference bias is active.
+  float bias_alpha_ = 0.0f;  ///< Fraction of samples to bias (separate from config_.alpha).
 
   curandGenerator_t gen_;  ///< CuRAND generator.
 };
