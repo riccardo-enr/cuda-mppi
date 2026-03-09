@@ -1,11 +1,49 @@
+/**
+ * @file smppi.cuh
+ * @brief Smooth MPPI (S-MPPI) controller with velocity-space optimisation.
+ *
+ * Instead of optimising the control sequence directly, S-MPPI optimises
+ * a **velocity** (rate-of-change) sequence $\mathbf{v}_{0:T-1}$ and
+ * integrates it to obtain the action sequence:
+ *
+ * $$
+ *   \mathbf{a}[t] = \mathbf{a}_{\text{nom}}[t] + \mathbf{v}[t] \, \Delta t
+ * $$
+ *
+ * An additional smoothness cost penalises consecutive action differences:
+ *
+ * $$
+ *   S_{\text{smooth}} = w_s \sum_{t=0}^{T-2} \|\mathbf{a}[t+1] - \mathbf{a}[t]\|^2
+ * $$
+ *
+ * This produces inherently smooth trajectories without requiring explicit
+ * constraints or kernel interpolation.
+ *
+ * @tparam Dynamics  Dynamics model (GPU-callable).
+ * @tparam Cost      Cost function (GPU-callable).
+ */
+
 #ifndef SMPPI_CONTROLLER_CUH
 #define SMPPI_CONTROLLER_CUH
 
 #include "mppi.cuh"
 
-namespace mppi
-{
+namespace mppi {
 
+/**
+ * @brief CUDA kernel to integrate velocity perturbations into action sequences.
+ *
+ * For each sample $k$, computes:
+ * $\mathbf{a}_k[t] = \mathbf{a}_{\text{nom}}[t] + (\mathbf{v}_{\text{nom}}[t] + \boldsymbol{\epsilon}_k[t]) \, \Delta t$
+ *
+ * One thread per sample; loops over $T$ and $n_u$.
+ *
+ * @param action_seq_nom  Nominal action sequence $[T \times n_u]$.
+ * @param u_vel_nom       Nominal velocity sequence $[T \times n_u]$.
+ * @param noise_vel       Velocity noise $[K \times T \times n_u]$.
+ * @param perturbed_actions  Output perturbed actions $[K \times T \times n_u]$.
+ * @param config          MPPI configuration.
+ */
 __global__ void integrate_actions_kernel(
   const float * action_seq_nom,
   const float * u_vel_nom,
@@ -14,21 +52,69 @@ __global__ void integrate_actions_kernel(
   MPPIConfig config
 );
 
+/**
+ * @brief CUDA kernel to integrate velocity into the nominal action sequence.
+ *
+ * Applies $\mathbf{a}[i] \mathrel{+}= \mathbf{v}[i] \, \Delta t$ element-wise.
+ * One thread per element of the flattened $[T \times n_u]$ array.
+ *
+ * @param action_seq  Action sequence to update in-place $[T \times n_u]$.
+ * @param u_vel       Velocity sequence $[T \times n_u]$.
+ * @param config      MPPI configuration (provides `dt`).
+ */
 __global__ void integrate_single_action_kernel(
   float * action_seq,
   const float * u_vel,
   MPPIConfig config
 );
 
+/**
+ * @brief CUDA kernel to compute the action-sequence smoothness cost.
+ *
+ * For each sample $k$, accumulates:
+ *
+ * $$
+ *   S_k \mathrel{+}= w_s \sum_{t=0}^{T-2} \sum_i (\mathbf{a}_k[t+1, i] - \mathbf{a}_k[t, i])^2
+ * $$
+ *
+ * @param perturbed_actions  Per-sample action sequences $[K \times T \times n_u]$.
+ * @param costs              Per-sample costs to augment $[K]$.
+ * @param config             MPPI configuration (provides `w_action_seq_cost`).
+ */
 __global__ void smoothness_cost_kernel(
   const float * perturbed_actions,
   float * costs,
   MPPIConfig config
 );
 
+/**
+ * @brief Smooth MPPI controller.
+ *
+ * Optimises in velocity space and integrates to produce smooth action
+ * sequences. Adds a smoothness penalty on top of the standard rollout cost.
+ *
+ * ### Usage
+ *
+ * ```cpp
+ * SMPPIController<MyDynamics, MyCost> ctrl(config, dynamics, cost);
+ * ctrl.compute(current_state);
+ * auto action = ctrl.get_action();
+ * ctrl.shift();
+ * ```
+ *
+ * @tparam Dynamics  Dynamics model (GPU-callable).
+ * @tparam Cost      Cost function (GPU-callable).
+ */
 template<typename Dynamics, typename Cost>
 class SMPPIController {
 public:
+  /**
+   * @brief Construct the S-MPPI controller and allocate device memory.
+   *
+   * @param config    MPPI config (uses `w_action_seq_cost` for smoothness weight).
+   * @param dynamics  Dynamics model instance.
+   * @param cost      Cost function instance.
+   */
   SMPPIController(const MPPIConfig & config, const Dynamics & dynamics, const Cost & cost)
   : config_(config), dynamics_(dynamics), cost_(cost)
   {
@@ -57,6 +143,7 @@ public:
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
   }
 
+  /** @brief Destructor. Frees all device buffers. */
   ~SMPPIController()
   {
     cudaFree(d_u_vel_);
@@ -71,22 +158,26 @@ public:
     curandDestroyGenerator(gen_);
   }
 
+  /**
+   * @brief Run the S-MPPI optimization loop.
+   *
+   * 1. Sample velocity noise
+   * 2. Integrate to get perturbed action sequences
+   * 3. Rollout using perturbed actions as "noise" (with zero nominal)
+   * 4. Add smoothness cost
+   * 5. Compute softmax weights, update velocity sequence
+   * 6. Integrate updated velocity into action sequence
+   *
+   * @param state  Current state $\mathbf{x} \in \mathbb{R}^{n_x}$.
+   */
   void compute(const Eigen::VectorXf & state)
   {
     HANDLE_ERROR(cudaMemcpy(d_initial_state_, state.data(), config_.nx * sizeof(float),
         cudaMemcpyHostToDevice));
 
-        // 1. Sample velocity noise
     HANDLE_CURAND_ERROR(curandGenerateNormal(gen_, d_noise_vel_,
         config_.num_samples * config_.horizon * config_.nu, 0.0f, 1.0f));
 
-        // 2. Integrate to get perturbed actions
-    int num_threads = 256;
-    int num_blocks = (config_.num_samples * config_.horizon * config_.nu + num_threads - 1) /
-      num_threads;
-        // Need a kernel that does integration: action = action_nom + (u_vel + noise) * dt
-        // This is tricky because integration is temporal.
-        // Parallelizing over K is easy. Inside K, temporal loop.
     dim3 block(256);
     dim3 grid((config_.num_samples + block.x - 1) / block.x);
 
@@ -99,7 +190,7 @@ public:
       );
     HANDLE_ERROR(cudaGetLastError());
 
-    // Rollout with perturbed actions (u_nom=0, noise=perturbed_actions → u = 0 + actions)
+    // Rollout with perturbed actions (u_nom=0, noise=perturbed_actions)
     kernels::rollout_kernel << < grid, block >> > (
       dynamics_,
       cost_,
@@ -111,15 +202,14 @@ public:
       d_costs_
       );
 
-        // 4. Add smoothness cost
-        // Kernel to compute diffs and add to d_costs_
+    // Add smoothness cost
     smoothness_cost_kernel << < grid, block >> > (
       d_perturbed_actions_,
       d_costs_,
       config_
       );
 
-    // Compute softmax weights
+    // Softmax weights
     std::vector<float> h_costs(config_.num_samples);
     HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_, config_.num_samples * sizeof(float),
         cudaMemcpyDeviceToHost));
@@ -151,7 +241,7 @@ public:
       config_
       );
 
-    // Integrate updated u_vel into action sequence
+    // Integrate updated velocity into action sequence
     const int interp_threads = (config_.horizon * config_.nu + 255) / 256;
     integrate_single_action_kernel<<<interp_threads, 256>>>(
       d_action_seq_,
@@ -160,6 +250,9 @@ public:
       );
   }
 
+  /**
+   * @brief Shift both velocity and action sequences forward by one timestep.
+   */
   void shift()
   {
     const int total_floats = config_.horizon * config_.nu;
@@ -170,41 +263,48 @@ public:
     shift_kernel<<<blocks, threads>>>(d_action_seq_, config_.horizon, config_.nu);
   }
 
+  /** @brief Upload the last applied control (for rate cost). */
   void set_applied_control(const Eigen::VectorXf& u) {
     HANDLE_ERROR(cudaMemcpy(d_u_applied_, u.data(),
                             config_.nu * sizeof(float),
                             cudaMemcpyHostToDevice));
   }
 
+  /**
+   * @brief Retrieve the first optimal control action.
+   * @return First action from the integrated action sequence.
+   */
   Eigen::VectorXf get_action()
   {
     Eigen::VectorXf action(config_.nu);
-        // Action is the first element of action_sequence
     HANDLE_ERROR(cudaMemcpy(action.data(), d_action_seq_, config_.nu * sizeof(float),
         cudaMemcpyDeviceToHost));
     return action;
   }
 
 private:
-  MPPIConfig config_;
-  Dynamics dynamics_;
-  Cost cost_;
+  MPPIConfig config_;   ///< MPPI hyperparameters.
+  Dynamics dynamics_;   ///< Dynamics model.
+  Cost cost_;           ///< Cost function.
 
-  float * d_u_vel_;
-  float * d_action_seq_;
-  float * d_noise_vel_;
-  float * d_perturbed_actions_;
+  float * d_u_vel_;              ///< Velocity sequence $[T \times n_u]$.
+  float * d_action_seq_;         ///< Integrated action sequence $[T \times n_u]$.
+  float * d_noise_vel_;          ///< Velocity noise $[K \times T \times n_u]$.
+  float * d_perturbed_actions_;  ///< Per-sample perturbed actions $[K \times T \times n_u]$.
 
-  float * d_costs_;
-  float * d_initial_state_;
-  float * d_weights_;
-  float * d_u_applied_;
-  float * d_zeros_;
+  float * d_costs_;          ///< Per-sample costs $[K]$.
+  float * d_initial_state_;  ///< Current state $[n_x]$.
+  float * d_weights_;        ///< Softmax weights $[K]$.
+  float * d_u_applied_;      ///< Last applied control $[n_u]$.
+  float * d_zeros_;          ///< Zero buffer (rollout placeholder) $[T \times n_u]$.
 
-  curandGenerator_t gen_;
+  curandGenerator_t gen_;  ///< CuRAND generator.
 };
 
-// Kernels
+// ===========================================================================
+// Kernel Implementations
+// ===========================================================================
+
 __global__ void integrate_actions_kernel(
   const float * action_seq_nom,
   const float * u_vel_nom,
@@ -216,33 +316,14 @@ __global__ void integrate_actions_kernel(
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= config.num_samples) {return;}
 
-    // Temporal integration for sample k
-    // We can't easily parallelize over T because step T depends on T-1.
-    // So each thread handles one sample (K).
-
-    // Need local copy of action?
-    // action[t] = action_nom[t] + (u_vel_nom[t] + noise[k,t])*dt ??
-    // No, SMPPI logic:
-    // perturbed_action = action_sequence[t-1?] + (u_vel + noise) * dt
-    // Ideally it's strictly integration: a[0] = a_init + v[0]dt, a[1] = a[0] + v[1]dt...
-    // But JAX SMPPI uses: action_sequence + perturbed_control * dt
-    // Wait, JAX code:
-    // perturbed_actions = smppi_state.action_sequence[None, :, :] + perturbed_control * config.delta_t
-    // This implies action_sequence is already the baseline, and we just add the velocity * dt deviation?
-    // Ah, `perturbed_control` is `U + noise`.
-    // So `action_new = action_old + (U + noise) * dt`.
-    // Yes. It's an Euler step from the nominal action sequence.
-
   for (int t = 0; t < config.horizon; ++t) {
     for (int i = 0; i < config.nu; ++i) {
       int idx_base = t * config.nu + i;
       int idx_sample = k * (config.horizon * config.nu) + idx_base;
 
       float vel = u_vel_nom[idx_base] + noise_vel[idx_sample];
-            // Bound velocity if needed
 
       float act = action_seq_nom[idx_base] + vel * config.dt;
-            // Bound action if needed
 
       perturbed_actions[idx_sample] = act;
     }
@@ -276,13 +357,13 @@ __global__ void smoothness_cost_kernel(
       int idx1 = k * (config.horizon * config.nu) + t * config.nu + i;
       int idx2 = k * (config.horizon * config.nu) + (t + 1) * config.nu + i;
 
-      float diff = (perturbed_actions[idx2] - perturbed_actions[idx1]) * config.u_scale;       // Scale?
+      float diff = (perturbed_actions[idx2] - perturbed_actions[idx1]) * config.u_scale;
       cost += diff * diff;
     }
   }
   costs[k] += cost * config.w_action_seq_cost;
 }
 
-} // namespace mppi
+}  // namespace mppi
 
-#endif // SMPPI_CONTROLLER_CUH
+#endif  // SMPPI_CONTROLLER_CUH

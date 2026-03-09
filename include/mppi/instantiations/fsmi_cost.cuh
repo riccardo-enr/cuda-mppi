@@ -1,3 +1,15 @@
+/**
+ * @file fsmi_cost.cuh
+ * @brief Simple 2D FSMI-based cost function for point-mass / double-integrator systems.
+ *
+ * Combines goal attraction, control regularisation, velocity penalty,
+ * and an omnidirectional (8-beam) entropy-based information reward
+ * evaluated on a 3D occupancy grid.
+ *
+ * This is a lightweight alternative to `InformativeCost` for systems
+ * with lower-dimensional state (e.g. 4D double integrator).
+ */
+
 #ifndef FSMI_COST_CUH
 #define FSMI_COST_CUH
 
@@ -5,36 +17,55 @@
 #include "mppi/core/mppi_common.cuh"
 #include "mppi/core/map.cuh"
 
-namespace mppi
-{
+namespace mppi {
 
+/**
+ * @brief FSMI cost function for 2D information-gathering with a simple dynamics model.
+ *
+ * Assumes state layout $[p_x, p_y, v_x, v_y, \ldots]$ and 2D control.
+ *
+ * ## Cost layers
+ *
+ * 1. **Control regularisation:** $0.1 \, \|\mathbf{u}\|^2$
+ * 2. **Goal attraction:** $\lambda_g \, \|\mathbf{p} - \mathbf{g}\|^2$
+ * 3. **Velocity penalty:** $0.1 \, \|\mathbf{v}\|^2$
+ * 4. **Information reward:** $-\lambda_I \, \bar{H}$, where $\bar{H}$ is the
+ *    mean per-beam visibility-weighted entropy along 8 omnidirectional rays.
+ */
 struct FSMICost
 {
-  const OccupancyGrid * map;   // Device pointer to map struct
-  float lambda_info;          // Information gain weight
-  float sensor_range;         // Max range in meters
-  float3 goal;                // Target goal
-  float lambda_goal;          // Goal weight
+  const OccupancyGrid * map;   ///< Device pointer to 3D occupancy grid.
+  float lambda_info;           ///< Information gain weight $\lambda_I$.
+  float sensor_range;          ///< Maximum sensor range (m).
+  float3 goal;                 ///< Target goal position.
+  float lambda_goal;           ///< Goal attraction weight $\lambda_g$.
 
-    // Additional parameters for dynamics/collision can be added.
-
+  /**
+   * @brief Running cost at timestep $t$.
+   *
+   * @param x       Current state.
+   * @param u       Current control.
+   * @param u_prev  Previous control (unused).
+   * @param t       Timestep index.
+   * @return        Scalar running cost.
+   */
   __device__ float compute(const float * x, const float * u,
                            const float * /*u_prev*/, int t) const
   {
-        // 1. Motion Cost (Regularization)
+    // 1. Control regularisation
     float cost = 0.0f;
     cost += 0.1f * (u[0] * u[0] + u[1] * u[1]);
 
-        // 2. Goal Cost (Stage)
+    // 2. Goal attraction
     float dx_g = x[0] - goal.x;
     float dy_g = x[1] - goal.y;
     float dist_sq = dx_g * dx_g + dy_g * dy_g;
     cost += lambda_goal * dist_sq;
 
-        // 3. Velocity Penalty (Stability)
+    // 3. Velocity penalty
     cost += 0.1f * (x[2] * x[2] + x[3] * x[3]);
 
-        // 4. Information Reward (Omnidirectional FSMI)
+    // 4. Omnidirectional entropy-based information reward
     if (map == nullptr || lambda_info <= 0.0f) {return cost;}
 
     float total_info = 0.0f;
@@ -69,14 +100,20 @@ struct FSMICost
     return cost;
   }
 
+  /**
+   * @brief Terminal cost (strong goal attraction).
+   *
+   * @param x  Terminal state.
+   * @return   $100 \, \|\mathbf{p} - \mathbf{g}\|^2$.
+   */
   __device__ float terminal_cost(const float * x) const
   {
     float dx_g = x[0] - goal.x;
     float dy_g = x[1] - goal.y;
-    return 100.0f * (dx_g * dx_g + dy_g * dy_g);   // Strong terminal attraction
+    return 100.0f * (dx_g * dx_g + dy_g * dy_g);
   }
 };
 
-} // namespace mppi
+}  // namespace mppi
 
-#endif // FSMI_COST_CUH
+#endif  // FSMI_COST_CUH

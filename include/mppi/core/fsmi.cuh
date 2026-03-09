@@ -1,3 +1,22 @@
+/**
+ * @file fsmi.cuh
+ * @brief Fast Shannon Mutual Information (FSMI) for GPU-accelerated information gain.
+ *
+ * Implements the FSMI algorithm from Zhang et al. (2020) for computing the
+ * expected mutual information between a range sensor measurement and an
+ * occupancy grid map. Provides both the full $O(n^2)$ banded formulation
+ * and a fast $O(n)$ uniform approximation suitable for real-time cost
+ * evaluation inside MPPI rollouts.
+ *
+ * Also includes:
+ * - An `InfoField` struct that precomputes a 2D potential field of
+ *   max-over-yaw FSMI values for strategic guidance.
+ * - A FOV-based grid update kernel for simulated sensor observations.
+ *
+ * @see Zhang et al., "FSMI: Fast computation of Shannon Mutual Information
+ *      for information-theoretic mapping", ICRA 2020.
+ */
+
 #ifndef MPPI_FSMI_CUH
 #define MPPI_FSMI_CUH
 
@@ -5,78 +24,115 @@
 #include <cmath>
 #include "mppi/core/map.cuh"
 
-namespace mppi
-{
+namespace mppi {
 
-// ---------------------------------------------------------------------------
-// Configuration structs (ported from Python FSMIConfig, UniformFSMIConfig,
-// InfoFieldConfig)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Configuration Structs
+// ===========================================================================
 
-struct FSMIConfig
-{
-    // Planner-level parameters
-  float info_threshold = 20.0f;
-  float ref_speed = 2.0f;
-  float info_weight = 10.0f;
-  float motion_weight = 1.0f;
-  float dist_weight = 0.5f;
+/**
+ * @brief Configuration for full FSMI computation (planner-level).
+ *
+ * Controls the sensor model, ray-casting resolution, and Gaussian
+ * measurement noise used in the banded $G_{kj}$ formulation (Eq. 22).
+ */
+struct FSMIConfig {
+  /// @name Planner-level parameters
+  /// @{
+  float info_threshold = 20.0f;   ///< Minimum MI to consider a pose informative.
+  float ref_speed = 2.0f;         ///< Reference speed for trajectory generation (m/s).
+  float info_weight = 10.0f;      ///< Weight on information gain in planner cost.
+  float motion_weight = 1.0f;     ///< Weight on motion cost in planner.
+  float dist_weight = 0.5f;       ///< Weight on distance-to-goal in planner.
+  /// @}
 
-    // Goal position (x, y, z)
-  float3 goal_pos = {9.0f, 5.0f, -2.0f};
+  /// @name Goal
+  /// @{
+  float3 goal_pos = {9.0f, 5.0f, -2.0f};  ///< Target goal position (NED).
+  /// @}
 
-    // Sensor parameters (Zhang et al. 2020)
-  float fov_rad = 1.57f;       // 90 degrees
-  int   num_beams = 16;
-  float max_range = 5.0f;      // metres
-  float ray_step = 0.1f;       // 10 cm cells along ray
+  /// @name Sensor model (Zhang et al. 2020)
+  /// @{
+  float fov_rad = 1.57f;          ///< Field-of-view half-angle (rad), default 90 deg.
+  int   num_beams = 16;           ///< Number of beams spanning the FOV.
+  float max_range = 5.0f;         ///< Maximum sensor range (m).
+  float ray_step = 0.1f;          ///< Ray-marching step size (m).
+  /// @}
 
-    // Sensor noise model
-  float sigma_range = 0.15f;   // Gaussian std dev (metres)
+  /// @name Sensor noise model
+  /// @{
+  float sigma_range = 0.15f;      ///< Range measurement std dev $\sigma_r$ (m).
+  /// @}
 
-    // Inverse sensor model (log-odds)
-  float inv_sensor_model_occ = 0.85f;    // log(0.7/0.3)
-  float inv_sensor_model_emp = -0.4f;    // log(0.4/0.6)
+  /// @name Inverse sensor model (log-odds)
+  /// @{
+  float inv_sensor_model_occ = 0.85f;   ///< $\ln(p_{\text{occ}} / (1 - p_{\text{occ}}))$.
+  float inv_sensor_model_emp = -0.4f;   ///< $\ln(p_{\text{emp}} / (1 - p_{\text{emp}}))$.
+  /// @}
 
-    // Gaussian truncation for G_kj (bandwidth)
-  float gaussian_truncation_sigma = 3.0f;
+  /// @name Gaussian truncation
+  /// @{
+  float gaussian_truncation_sigma = 3.0f;  ///< $G_{kj}$ bandwidth in units of $\sigma_r$.
+  /// @}
 
-    // Trajectory-level IG parameters
-  int   trajectory_subsample_rate = 5;
-  float trajectory_ig_decay = 0.7f;
+  /// @name Trajectory-level parameters
+  /// @{
+  int   trajectory_subsample_rate = 5;   ///< Subsample rate along trajectory for IG.
+  float trajectory_ig_decay = 0.7f;      ///< Exponential decay for cumulative IG.
+  /// @}
 };
 
-struct UniformFSMIConfig
-{
-  float fov_rad = 1.57f;       // 90 degrees
-  int   num_beams = 6;
-  float max_range = 2.5f;      // local only (metres)
-  float ray_step = 0.2f;       // coarser resolution
+/**
+ * @brief Configuration for the uniform (fast) FSMI approximation.
+ *
+ * Uses the diagonal approximation $G_{kj} \approx \delta(k - j)$,
+ * reducing per-beam complexity from $O(n^2)$ to $O(n)$. Suitable for
+ * real-time evaluation inside MPPI rollout kernels.
+ */
+struct UniformFSMIConfig {
+  float fov_rad = 1.57f;          ///< FOV half-angle (rad).
+  int   num_beams = 6;            ///< Number of beams (fewer than full FSMI).
+  float max_range = 2.5f;         ///< Local sensing range (m).
+  float ray_step = 0.2f;          ///< Coarser ray step (m).
 
-  float inv_sensor_model_occ = 0.85f;
-  float inv_sensor_model_emp = -0.4f;
+  float inv_sensor_model_occ = 0.85f;  ///< Log-odds for occupied cells.
+  float inv_sensor_model_emp = -0.4f;  ///< Log-odds for empty cells.
 
-  float info_weight = 5.0f;
+  float info_weight = 5.0f;       ///< Cost weight for uniform FSMI reward.
 };
 
-struct InfoFieldConfig
-{
-  float field_res = 0.5f;         // metres per field cell
-  float field_extent = 5.0f;      // half-width of local workspace (m)
-  int   n_yaw = 8;
-  int   field_update_interval = 10;
-  float lambda_info = 5.0f;       // field lookup cost weight
-  float lambda_local = 10.0f;     // Uniform-FSMI cost weight
-  float ref_speed = 2.0f;
-  int   ref_horizon = 40;
-  float target_weight = 1.0f;
-  float goal_weight = 0.5f;
+/**
+ * @brief Configuration for the precomputed information potential field.
+ *
+ * The `InfoField` is a 2D grid centred on the UAV that stores
+ * $\max_\psi \text{FSMI}(x, y, \psi)$ at each cell. Updated periodically
+ * on the GPU and sampled via bilinear interpolation in the cost function.
+ */
+struct InfoFieldConfig {
+  float field_res = 0.5f;         ///< Metres per field cell.
+  float field_extent = 5.0f;      ///< Half-width of the local field (m).
+  int   n_yaw = 8;                ///< Number of yaw angles to maximise over.
+  int   field_update_interval = 10; ///< Update every N control steps.
+  float lambda_info = 5.0f;       ///< Cost weight for field lookup.
+  float lambda_local = 10.0f;     ///< Cost weight for uniform FSMI.
+  float ref_speed = 2.0f;         ///< Reference speed for trajectory generation (m/s).
+  int   ref_horizon = 40;         ///< Reference trajectory horizon (steps).
+  float target_weight = 1.0f;     ///< Weight on reference trajectory tracking.
+  float goal_weight = 0.5f;       ///< Weight on goal attraction.
 };
 
-// ---------------------------------------------------------------------------
-// Device helper: approximate Gaussian CDF via the Abramowitz & Stegun
-// rational approximation (max error ~1.5e-7).
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Device Helpers
+// ===========================================================================
+
+/**
+ * @brief Approximate Gaussian CDF via Abramowitz & Stegun rational approximation.
+ *
+ * Maximum absolute error $\approx 1.5 \times 10^{-7}$.
+ *
+ * @param x  Standard normal quantile.
+ * @return   $\Phi(x) = P(Z \leq x)$ for $Z \sim \mathcal{N}(0,1)$.
+ */
 __device__ inline float norm_cdf(float x)
 {
   const float a1 = 0.254829592f;
@@ -96,11 +152,20 @@ __device__ inline float norm_cdf(float x)
   return 0.5f * (1.0f + sign * y);
 }
 
-// ---------------------------------------------------------------------------
-// f-score: Eq. 9 from Zhang et al. (2020)
-//   f(r, δ) = log((r+1)/(r+1/δ)) − log(δ)/(r·δ+1)
-// where r = odds = p/(1−p), δ = exp(inv_sensor_model)
-// ---------------------------------------------------------------------------
+/**
+ * @brief F-score from Zhang et al. (2020), Eq. 9.
+ *
+ * $$
+ *   f(r, \delta) = \ln\!\frac{r + 1}{r + 1/\delta} - \frac{\ln \delta}{r \delta + 1}
+ * $$
+ *
+ * where $r = p / (1 - p)$ is the prior odds and
+ * $\delta = \exp(\text{inv\_sensor\_model})$.
+ *
+ * @param r      Prior odds ratio (clamped to $\geq 10^{-4}$).
+ * @param delta  $\exp(\text{inverse sensor model value})$.
+ * @return       Scalar information contribution.
+ */
 __device__ inline float f_score(float r, float delta)
 {
   r = fmaxf(r, 1e-4f);
@@ -109,22 +174,38 @@ __device__ inline float f_score(float r, float delta)
   return term1 - term2;
 }
 
-// ---------------------------------------------------------------------------
-// Maximum cells along a single beam (compile-time upper bound)
-// max_range / ray_step: 5.0/0.1 = 50 for full FSMI, 2.5/0.2 = 12 for uniform
-// ---------------------------------------------------------------------------
+/// Maximum cells along a single beam (compile-time upper bound).
+/// Full FSMI: $5.0 / 0.1 = 50$; uniform: $2.5 / 0.2 = 12$.
 static constexpr int FSMI_MAX_CELLS = 64;
 
-// ---------------------------------------------------------------------------
-// Full FSMI for a single beam — O(n²) with banded G_kj
-//
-// Implements Theorem 1, Algorithm 2 (P_e), Algorithm 3 (C_k), Eq. 22 (G_kj)
-//
-// cell_probs: occupancy probabilities along the ray (N values)
-// cell_dists: distances from sensor along the ray (N values)
-// N:          number of cells along this beam
-// cfg:        FSMIConfig with sensor noise and truncation parameters
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Full FSMI (per-beam, O(n^2) banded)
+// ===========================================================================
+
+/**
+ * @brief Compute full FSMI for a single beam — $O(n^2)$ with banded $G_{kj}$.
+ *
+ * Implements Theorem 1, Algorithm 2 ($P(e_j)$), Algorithm 3 ($C_k$),
+ * and Eq. 22 ($G_{kj}$) from Zhang et al. (2020).
+ *
+ * The mutual information for one beam is:
+ *
+ * $$
+ *   I = \sum_j \sum_k P(e_j) \, C_k \, G_{kj}
+ * $$
+ *
+ * where:
+ * - $P(e_j) = o_j \prod_{l < j} (1 - o_l)$ is the event probability (Alg. 2)
+ * - $C_k = f_{\text{occ}}(k) + \sum_{i < k} f_{\text{emp}}(i)$ (Alg. 3)
+ * - $G_{kj} = \Phi\!\bigl(\frac{l_{k+\frac{1}{2}} - \mu_j}{\sigma}\bigr)
+ *           - \Phi\!\bigl(\frac{l_{k-\frac{1}{2}} - \mu_j}{\sigma}\bigr)$ (Eq. 22)
+ *
+ * @param cell_probs  Occupancy probabilities along the ray ($N$ values).
+ * @param cell_dists  Distances from the sensor along the ray ($N$ values).
+ * @param N           Number of cells along this beam.
+ * @param cfg         FSMI configuration (sensor noise, truncation).
+ * @return            Beam mutual information (nats).
+ */
 __device__ float compute_beam_fsmi(
   const float * cell_probs,
   const float * cell_dists,
@@ -137,14 +218,14 @@ __device__ float compute_beam_fsmi(
   float P_e[FSMI_MAX_CELLS];
   float C_k[FSMI_MAX_CELLS];
 
-    // === Algorithm 2: P(e_j) = o_j · ∏_{l<j} (1 − o_l) ===
+    // === Algorithm 2: P(e_j) = o_j * prod_{l<j} (1 - o_l) ===
   float cum_not_occ = 1.0f;
   for (int j = 0; j < N; ++j) {
     P_e[j] = cell_probs[j] * cum_not_occ;
     cum_not_occ *= (1.0f - cell_probs[j]);
   }
 
-    // === Algorithm 3: C_k = f_occ[k] + Σ_{i<k} f_emp[i] ===
+    // === Algorithm 3: C_k = f_occ[k] + sum_{i<k} f_emp[i] ===
   float delta_occ = expf(cfg.inv_sensor_model_occ);
   float delta_emp = expf(cfg.inv_sensor_model_emp);
 
@@ -158,14 +239,12 @@ __device__ float compute_beam_fsmi(
   }
 
     // === Eq. 22: G_kj with Gaussian truncation ===
-    // G_kj = Φ((l_{k+½} − μ_j)/σ) − Φ((l_{k−½} − μ_j)/σ)
-    // Truncate: |k−j| > trunc_radius → G_kj = 0
   float sigma = cfg.sigma_range;
   float half_s = cfg.ray_step * 0.5f;
   int trunc_r = (int)(cfg.gaussian_truncation_sigma * sigma / cfg.ray_step + 0.5f);
   if (trunc_r < 1) {trunc_r = 1;}
 
-    // Accumulate MI = Σ_j Σ_k P_e[j] · C_k[k] · G_kj
+    // Accumulate MI = sum_j sum_k P_e[j] * C_k[k] * G_kj
   float mi = 0.0f;
   for (int j = 0; j < N; ++j) {
     if (P_e[j] < 1e-8f) {continue;}    // skip negligible terms
@@ -187,11 +266,25 @@ __device__ float compute_beam_fsmi(
   return mi;
 }
 
-// ---------------------------------------------------------------------------
-// Uniform-FSMI for a single beam — O(n) approximation
-//
-// MI ≈ Σ_j P(e_j) · C_j   (G_kj ≈ δ(k−j))
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Uniform FSMI (per-beam, O(n) approximation)
+// ===========================================================================
+
+/**
+ * @brief Compute uniform FSMI for a single beam — $O(n)$ approximation.
+ *
+ * Assumes perfect range measurement ($G_{kj} \approx \delta(k - j)$),
+ * collapsing the double sum to:
+ *
+ * $$
+ *   I \approx \sum_j P(e_j) \, C_j
+ * $$
+ *
+ * @param cell_probs  Occupancy probabilities along the ray ($N$ values).
+ * @param N           Number of cells along this beam.
+ * @param cfg         Uniform FSMI configuration.
+ * @return            Beam mutual information (nats, approximate).
+ */
 __device__ float compute_beam_uniform_fsmi(
   const float * cell_probs,
   int N,
@@ -229,9 +322,22 @@ __device__ float compute_beam_uniform_fsmi(
   return mi;
 }
 
-// ---------------------------------------------------------------------------
-// Compute full FSMI at a single pose (all beams within FOV)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Pose-level FSMI (all beams)
+// ===========================================================================
+
+/**
+ * @brief Compute full FSMI at a single 2D pose (all beams within FOV).
+ *
+ * Casts `num_beams` rays uniformly across the FOV centred at `yaw`,
+ * and sums per-beam FSMI values.
+ *
+ * @param grid  2D occupancy grid (device-accessible).
+ * @param pos   UAV position in world frame.
+ * @param yaw   Heading angle (rad).
+ * @param cfg   Full FSMI configuration.
+ * @return      Total mutual information across all beams (nats).
+ */
 __device__ float compute_fsmi_at_pose(
   const OccupancyGrid2D & grid,
   float2 pos,
@@ -274,9 +380,18 @@ __device__ float compute_fsmi_at_pose(
   return total_mi;
 }
 
-// ---------------------------------------------------------------------------
-// Compute Uniform-FSMI at a single pose (all beams within FOV)
-// ---------------------------------------------------------------------------
+/**
+ * @brief Compute uniform FSMI at a single 2D pose (all beams within FOV).
+ *
+ * Lightweight version of `compute_fsmi_at_pose` using the $O(n)$
+ * uniform approximation. Designed for use inside MPPI rollout costs.
+ *
+ * @param grid  2D occupancy grid (device-accessible).
+ * @param pos   UAV position in world frame.
+ * @param yaw   Heading angle (rad).
+ * @param cfg   Uniform FSMI configuration.
+ * @return      Total approximate mutual information (nats).
+ */
 __device__ float compute_uniform_fsmi_at_pose(
   const OccupancyGrid2D & grid,
   float2 pos,
@@ -319,14 +434,29 @@ __device__ float compute_uniform_fsmi_at_pose(
 // Information Field
 // ===========================================================================
 
-// ---------------------------------------------------------------------------
-// Kernel: compute info field at a coarse grid of (x,y) positions.
-// One thread per (ix, iy) cell. Loops over n_yaw angles, stores max.
-// ---------------------------------------------------------------------------
+/**
+ * @brief CUDA kernel to compute the information potential field.
+ *
+ * One thread per $(i_x, i_y)$ cell. For each cell, evaluates FSMI at
+ * `n_yaw` uniformly spaced heading angles and stores the maximum:
+ *
+ * $$
+ *   F[i_x, i_y] = \max_{\psi \in [0, 2\pi)} \text{FSMI}(x, y, \psi)
+ * $$
+ *
+ * @param grid          2D occupancy grid.
+ * @param field_output  Output field $[N_x \times N_y]$ (device).
+ * @param field_origin  World coordinates of field cell $(0, 0)$.
+ * @param field_res     Field resolution (m/cell).
+ * @param Nx            Field width in cells.
+ * @param Ny            Field height in cells.
+ * @param n_yaw         Number of yaw angles to evaluate.
+ * @param fsmi_cfg      Full FSMI configuration.
+ */
 __global__ void compute_info_field_kernel(
   const OccupancyGrid2D grid,
-  float *       field_output,     // (Nx * Ny)
-  float2       field_origin,     // world coords of field[0,0]
+  float *       field_output,
+  float2       field_origin,
   float        field_res,
   int          Nx,
   int          Ny,
@@ -353,17 +483,23 @@ __global__ void compute_info_field_kernel(
   field_output[ix * Ny + iy] = best_mi;
 }
 
-// ---------------------------------------------------------------------------
-// InfoField: host-side manager for the information potential field.
-// ---------------------------------------------------------------------------
+/**
+ * @brief Host-side manager for the 2D information potential field.
+ *
+ * Maintains a device-allocated grid of precomputed FSMI values centred
+ * on the UAV. The field is recomputed periodically (e.g. at 5 Hz) by
+ * launching `compute_info_field_kernel`, and sampled inside the MPPI
+ * cost function via bilinear interpolation (`sample()`).
+ */
 struct InfoField
 {
-  float * d_field = nullptr;    // device pointer (Nx * Ny)
-  float2 origin = {0.0f, 0.0f};
-  float  res = 0.5f;
-  int    Nx = 0;
-  int    Ny = 0;
+  float * d_field = nullptr;    ///< Device pointer to field data $[N_x \times N_y]$.
+  float2 origin = {0.0f, 0.0f}; ///< World coordinates of cell $(0, 0)$.
+  float  res = 0.5f;            ///< Field resolution (m/cell).
+  int    Nx = 0;                ///< Field width in cells.
+  int    Ny = 0;                ///< Field height in cells.
 
+  /** @brief Allocate (or reallocate) device memory for the field. */
   void allocate(int nx, int ny)
   {
     Nx = nx;
@@ -373,12 +509,20 @@ struct InfoField
     cudaMemset(d_field, 0, Nx * Ny * sizeof(float));
   }
 
+  /** @brief Free device memory. */
   void free()
   {
     if (d_field) {cudaFree(d_field); d_field = nullptr;}
   }
 
-    // Compute field centred on uav_pos
+  /**
+   * @brief Recompute the field centred on the UAV position.
+   *
+   * @param grid      Current 2D occupancy grid.
+   * @param uav_pos   UAV position in world frame (field will be centred here).
+   * @param ifc       InfoField configuration.
+   * @param fsmi_cfg  Full FSMI configuration for per-cell evaluation.
+   */
   void compute(
     const OccupancyGrid2D & grid,
     float2 uav_pos,
@@ -405,7 +549,10 @@ struct InfoField
     cudaDeviceSynchronize();
   }
 
-    // Download field to host
+  /**
+   * @brief Download the field to host memory.
+   * @param h_field  Host buffer of size $N_x \times N_y$.
+   */
   void download(float * h_field) const
   {
     if (d_field && h_field) {
@@ -414,7 +561,15 @@ struct InfoField
     }
   }
 
-    // Bilinear interpolation on device (for use in cost function)
+  /**
+   * @brief Sample the field at a world position via bilinear interpolation.
+   *
+   * Designed for use inside `__device__` cost functions. Clamps to field
+   * boundaries and returns 0 if the field is not allocated.
+   *
+   * @param world_pos  Query position in world coordinates.
+   * @return           Interpolated FSMI value.
+   */
   __device__ float sample(float2 world_pos) const
   {
     if (!d_field || Nx <= 0 || Ny <= 0) {return 0.0f;}
@@ -453,7 +608,28 @@ struct InfoField
 // FOV Grid Update Kernel
 // ===========================================================================
 
-// One thread per ray. March along the ray and update visible cells.
+/**
+ * @brief CUDA kernel to update a 2D occupancy grid along sensor FOV rays.
+ *
+ * One thread per ray. Marches from `uav_pos` outward, marking cells as
+ * free (`free_update`) until an obstacle ($p \geq$ `occ_threshold`) is
+ * hit, which is marked as occupied (`occ_update`) and terminates the ray.
+ *
+ * @param grid_data      Occupancy grid probability data (device, row-major).
+ * @param width          Grid width in cells.
+ * @param height         Grid height in cells.
+ * @param origin         World coordinates of cell $(0, 0)$.
+ * @param resolution     Grid resolution (m/cell).
+ * @param uav_pos        UAV position in world frame.
+ * @param yaw            UAV heading (rad).
+ * @param fov_rad        Field-of-view half-angle (rad).
+ * @param max_range      Maximum ray length (m).
+ * @param n_rays         Number of rays to cast.
+ * @param ray_step       Step size along each ray (m).
+ * @param free_update    Probability to write for free cells (e.g. 0.01).
+ * @param occ_update     Probability to write for obstacle cells (e.g. 0.99).
+ * @param occ_threshold  Threshold above which a cell is considered occupied.
+ */
 __global__ void fov_grid_update_kernel(
   float * grid_data,
   int    width,
@@ -466,9 +642,9 @@ __global__ void fov_grid_update_kernel(
   float  max_range,
   int    n_rays,
   float  ray_step,
-  float  free_update,     // probability to write for free cells (e.g. 0.01)
-  float  occ_update,      // probability to write for obstacles  (e.g. 0.99)
-  float  occ_threshold    // threshold above which a cell is an obstacle (e.g. 0.7)
+  float  free_update,
+  float  occ_update,
+  float  occ_threshold
 )
 {
   int r = blockIdx.x * blockDim.x + threadIdx.x;
@@ -505,7 +681,22 @@ __global__ void fov_grid_update_kernel(
   }
 }
 
-// Host wrapper for FOV grid update
+/**
+ * @brief Host wrapper for FOV-based grid update.
+ *
+ * Launches `fov_grid_update_kernel` and synchronizes.
+ *
+ * @param grid           2D occupancy grid to update (device data).
+ * @param uav_pos        UAV position in world frame.
+ * @param yaw            UAV heading (rad).
+ * @param fov_rad        FOV half-angle (rad), default 90 deg.
+ * @param max_range      Max ray range (m), default 2.5.
+ * @param n_rays         Number of rays, default 64.
+ * @param ray_step       Step size (m), default 0.1.
+ * @param free_update    Free-cell probability, default 0.01.
+ * @param occ_update     Obstacle probability, default 0.99.
+ * @param occ_threshold  Occupied threshold, default 0.7.
+ */
 inline void fov_grid_update(
   OccupancyGrid2D & grid,
   float2 uav_pos,
@@ -531,6 +722,6 @@ inline void fov_grid_update(
   cudaDeviceSynchronize();
 }
 
-} // namespace mppi
+}  // namespace mppi
 
-#endif // MPPI_FSMI_CUH
+#endif  // MPPI_FSMI_CUH

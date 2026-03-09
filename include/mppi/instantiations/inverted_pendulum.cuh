@@ -1,31 +1,71 @@
+/**
+ * @file inverted_pendulum.cuh
+ * @brief Cart-pole (inverted pendulum) dynamics and cost for MPPI benchmarking.
+ *
+ * ## State vector ($n_x = 4$)
+ *
+ * | Index | Symbol         | Description              |
+ * |-------|----------------|--------------------------|
+ * | 0     | $x$            | Cart position            |
+ * | 1     | $\theta$       | Pole angle (0 = upright) |
+ * | 2     | $\dot{x}$      | Cart velocity            |
+ * | 3     | $\dot{\theta}$ | Pole angular velocity    |
+ *
+ * ## Control ($n_u = 1$)
+ *
+ * | Index | Symbol | Description       |
+ * |-------|--------|-------------------|
+ * | 0     | $F$    | Horizontal force  |
+ *
+ * ## Dynamics
+ *
+ * Standard cart-pole equations (OpenAI Gym convention, $\theta = 0$ is upright):
+ *
+ * $$
+ *   \ddot{\theta} = \frac{g \sin\theta - \cos\theta \cdot \text{temp}}
+ *                  {l \left(\frac{4}{3} - \frac{m_p \cos^2\theta}{m_c + m_p}\right)}
+ * $$
+ *
+ * where $\text{temp} = \frac{F + m_p l \dot{\theta}^2 \sin\theta}{m_c + m_p}$.
+ *
+ * Euler integration.
+ */
+
 #ifndef MPPI_INSTANTIATIONS_INVERTED_PENDULUM_CUH
 #define MPPI_INSTANTIATIONS_INVERTED_PENDULUM_CUH
 
 #include <cuda_runtime.h>
 #include <math.h>
 
-namespace mppi
-{
-namespace instantiations
-{
+namespace mppi {
+namespace instantiations {
 
+/**
+ * @brief Cart-pole dynamics (Euler integration).
+ */
 struct InvertedPendulum
 {
-  static constexpr int STATE_DIM = 4;
-  static constexpr int CONTROL_DIM = 1;
+  static constexpr int STATE_DIM = 4;     ///< $n_x = 4$.
+  static constexpr int CONTROL_DIM = 1;   ///< $n_u = 1$.
 
-    // Constants
-  static constexpr float g = 9.81f;
-  static constexpr float mc = 1.0f;
-  static constexpr float mp = 0.1f;
-  static constexpr float l = 0.5f;     // Length to center of mass
-  static constexpr float dt_default = 0.01f;
+  static constexpr float g = 9.81f;       ///< Gravitational acceleration (m/s$^2$).
+  static constexpr float mc = 1.0f;       ///< Cart mass (kg).
+  static constexpr float mp = 0.1f;       ///< Pole mass (kg).
+  static constexpr float l = 0.5f;        ///< Half-pole length (m).
+  static constexpr float dt_default = 0.01f; ///< Default time step (s).
 
+  /**
+   * @brief Euler integration step.
+   *
+   * @param state       Current state $[x, \theta, \dot{x}, \dot{\theta}]$.
+   * @param u           Control $[F]$.
+   * @param next_state  Output next state.
+   * @param dt          Time step.
+   */
   __host__ __device__ void step(
     const float * state, const float * u, float * next_state,
     float dt) const
   {
-        // State: [x, theta, x_dot, theta_dot]
     float th = state[1];
     float x_dot = state[2];
     float th_dot = state[3];
@@ -34,22 +74,6 @@ struct InvertedPendulum
     float sin_th = sinf(th);
     float cos_th = cosf(th);
     float total_m = mc + mp;
-
-        // Dynamics (0 is Upright, unstable)
-        // Based on standard derivation where theta=0 is up.
-        // Verify: If theta is small positive, gravity should pull it further positive (unstable).
-        // Common eq: th_acc = (g sin th + cos th ((-F - m l th_dot^2 sin th)/M_total)) / (l (4/3 - ...))
-        // Let's stick to a known correct formulation for "0 is Up".
-
-        // Cart-Pole Dynamics where theta=0 is UP:
-        // x_acc = (F + mp*sin(th)*(l*th_dot^2 + g*cos(th))) / (mc + mp*sin(th)^2)
-        // th_acc = (-F*cos(th) - mp*l*th_dot^2*cos(th)*sin(th) - (mc+mp)*g*sin(th)) / (l * (mc + mp*sin(th)^2))
-
-        // Wait, checking signs.
-        // Let's use the one from OpenAI Gym (CartPole-v1) where 0 is up.
-        // temp = (force + polemass_length * theta_dot * theta_dot * sintheta) / total_mass;
-        // thetaacc = (gravity * sintheta - costheta * temp) / (length * (4.0/3.0 - masspole * costheta * costheta / total_mass));
-        // xacc = temp - polemass_length * thetaacc * costheta / total_mass;
 
     float temp = (f + mp * l * th_dot * th_dot * sin_th) / total_m;
     float th_acc = (g * sin_th - cos_th * temp) /
@@ -63,8 +87,15 @@ struct InvertedPendulum
   }
 };
 
+/**
+ * @brief Quadratic cost for cart-pole stabilisation at $\theta = 0$ (upright).
+ *
+ * Running cost: $x^2 + 10\theta^2 + 0.1\dot{x}^2 + 0.1\dot{\theta}^2 + 0.001 F^2$.
+ * Terminal cost: $5x^2 + 50\theta^2 + \dot{x}^2 + \dot{\theta}^2$.
+ */
 struct PendulumCost
 {
+  /** @brief Running cost (penalises deviation from upright). */
   __host__ __device__ float compute(const float * state, const float * u,
                                     const float * /*u_prev*/, int t) const
   {
@@ -73,12 +104,9 @@ struct PendulumCost
     float x_dot = state[2];
     float theta_dot = state[3];
 
-        // Penalize distance from 0 (Upright)
-        // Also penalize cart position to keep it near 0
-
     float c = 0.0f;
     c += 1.0f * x * x;
-    c += 10.0f * theta * theta;     // Strong penalty for angle
+    c += 10.0f * theta * theta;
     c += 0.1f * x_dot * x_dot;
     c += 0.1f * theta_dot * theta_dot;
     c += 0.001f * u[0] * u[0];
@@ -86,6 +114,7 @@ struct PendulumCost
     return c;
   }
 
+  /** @brief Terminal cost (stronger penalties). */
   __host__ __device__ float terminal_cost(const float * state) const
   {
     float c = 0.0f;
@@ -98,6 +127,6 @@ struct PendulumCost
 };
 
 }   // namespace instantiations
-} // namespace mppi
+}  // namespace mppi
 
-#endif // MPPI_INSTANTIATIONS_INVERTED_PENDULUM_CUH
+#endif  // MPPI_INSTANTIATIONS_INVERTED_PENDULUM_CUH

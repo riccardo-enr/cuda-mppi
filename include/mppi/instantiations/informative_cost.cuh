@@ -1,3 +1,22 @@
+/**
+ * @file informative_cost.cuh
+ * @brief Multi-layer cost function for Informative MPPI (I-MPPI).
+ *
+ * Combines eight cost layers evaluated at each timestep to guide
+ * exploration while maintaining safety and goal-directed behaviour:
+ *
+ * | # | Layer                      | Weight             | Sign |
+ * |---|----------------------------|--------------------|------|
+ * | 1 | Grid obstacle collision    | `collision_penalty`| +    |
+ * | 2 | Workspace bounds           | `collision_penalty`| +    |
+ * | 3 | Altitude tracking          | `height_weight`    | +    |
+ * | 4 | Reference trajectory track | `target_weight`    | +    |
+ * | 5 | Uniform-FSMI local info    | `lambda_local`     | −    |
+ * | 6 | Info field lookup          | `lambda_info`      | −    |
+ * | 7 | Goal attraction (nearest)  | `goal_weight`      | +    |
+ * | 8 | Action regularisation      | `action_reg`       | +    |
+ */
+
 #ifndef MPPI_INFORMATIVE_COST_CUH
 #define MPPI_INFORMATIVE_COST_CUH
 
@@ -6,14 +25,20 @@
 #include "mppi/core/map.cuh"
 #include "mppi/core/fsmi.cuh"
 
-namespace mppi
-{
-namespace instantiations
-{
+namespace mppi {
+namespace instantiations {
 
-// ---------------------------------------------------------------------------
-// Helper: extract yaw from quaternion [qw, qx, qy, qz]
-// ---------------------------------------------------------------------------
+/**
+ * @brief Extract yaw angle from a quaternion $[q_w, q_x, q_y, q_z]$.
+ *
+ * $$
+ *   \psi = \operatorname{atan2}\!\bigl(2(q_w q_z + q_x q_y),\;
+ *          1 - 2(q_y^2 + q_z^2)\bigr)
+ * $$
+ *
+ * @param q  Pointer to quaternion array $[q_w, q_x, q_y, q_z]$.
+ * @return   Yaw angle in radians.
+ */
 __device__ inline float quat_to_yaw(const float * q)
 {
   float qw = q[0], qx = q[1], qy = q[2], qz = q[3];
@@ -21,65 +46,82 @@ __device__ inline float quat_to_yaw(const float * q)
                   1.0f - 2.0f * (qy * qy + qz * qz));
 }
 
-// ---------------------------------------------------------------------------
-// Informative Cost for I-MPPI (Layer 3)
-//
-// Ported from environment.py::informative_running_cost
-//
-// Combines:
-//   1. Grid-based obstacle cost
-//   2. Bounds cost
-//   3. Height cost (altitude tracking)
-//   4. Reference trajectory tracking
-//   5. Uniform-FSMI local information reward
-//   6. Info field lookup (strategic guidance)
-//   7. Goal attraction
-//   8. Action regularization
-// ---------------------------------------------------------------------------
+/**
+ * @brief Informative cost function for I-MPPI exploration.
+ *
+ * Designed for a 13D quadrotor state
+ * $[p_x, p_y, p_z, v_x, v_y, v_z, q_w, q_x, q_y, q_z, \omega_x, \omega_y, \omega_z]$
+ * with 4D control $[T, \omega_x, \omega_y, \omega_z]$.
+ *
+ * Supports up to `MAX_GOALS` viewpoints for multi-goal attraction
+ * (nearest-viewpoint distance is used).
+ */
 struct InformativeCost
 {
-    // Grid for obstacle checking and FSMI computation
-  OccupancyGrid2D grid;
+  /// @name Map and information structures
+  /// @{
+  OccupancyGrid2D grid;         ///< 2D occupancy grid for obstacle/FSMI queries.
+  InfoField info_field;          ///< Precomputed information potential field.
+  UniformFSMIConfig uniform_cfg; ///< Configuration for local uniform-FSMI.
+  /// @}
 
-    // Precomputed information field (updated at 5 Hz by host)
-  InfoField info_field;
+  /// @name Cost weights
+  /// @{
+  float lambda_info = 5.0f;     ///< Info field lookup weight (layer 6).
+  float lambda_local = 10.0f;   ///< Uniform-FSMI weight (layer 5).
+  float target_weight = 1.0f;   ///< Reference trajectory tracking (layer 4).
+  float goal_weight = 0.5f;     ///< Goal attraction weight (layer 7).
+  /// @}
 
-    // Uniform-FSMI configuration
-  UniformFSMIConfig uniform_cfg;
-
-    // Cost weights
-  float lambda_info = 5.0f;       // info field lookup weight
-  float lambda_local = 10.0f;     // Uniform-FSMI weight
-  float target_weight = 1.0f;     // reference trajectory tracking
-  float goal_weight = 0.5f;       // goal attraction
-
-    // Goal positions (multi-goal: attract to nearest viewpoint)
+  /// @name Multi-goal support
+  /// @{
   static constexpr int MAX_GOALS = 32;
-  float3 goals[MAX_GOALS] = {};
-  int num_goals = 1;
+  float3 goals[MAX_GOALS] = {};  ///< Viewpoint goal positions (NED).
+  int num_goals = 1;             ///< Number of active goals.
+  /// @}
 
-    // Obstacle / collision
-  float collision_penalty = 1000.0f;
-  float occ_threshold = 0.7f;
+  /// @name Obstacle / collision
+  /// @{
+  float collision_penalty = 1000.0f;  ///< Penalty for grid collision or out-of-bounds.
+  float occ_threshold = 0.7f;         ///< Occupancy probability threshold.
+  /// @}
 
-    // Height tracking
-  float height_weight = 10.0f;
-  float target_altitude = -2.0f;     // NED: negative = up
+  /// @name Height tracking
+  /// @{
+  float height_weight = 10.0f;       ///< Altitude error weight (layer 3).
+  float target_altitude = -2.0f;     ///< Target altitude in NED (negative = up).
+  /// @}
 
-    // Action regularization
-  float action_reg = 0.01f;
+  /// @name Action regularisation
+  /// @{
+  float action_reg = 0.01f;          ///< $\ell_2$ penalty on control inputs.
+  /// @}
 
-    // Bounds (world coordinates)
+  /// @name Workspace bounds (world coordinates)
+  /// @{
   float bound_x_min = -1.0f;
   float bound_x_max = 14.0f;
   float bound_y_min = -1.0f;
   float bound_y_max = 11.0f;
+  /// @}
 
-    // Reference trajectory (device pointer, horizon × 3)
-  const float * ref_trajectory = nullptr;
-  int          ref_horizon = 0;
+  /// @name Reference trajectory
+  /// @{
+  const float * ref_trajectory = nullptr;  ///< Device pointer, $[\text{horizon} \times 3]$.
+  int          ref_horizon = 0;            ///< Length of reference trajectory.
+  /// @}
 
-    // -----------------------------------------------------------------------
+  /**
+   * @brief Compute the running cost at timestep $t$.
+   *
+   * Evaluates all 8 cost layers and returns their weighted sum.
+   *
+   * @param x       Current state $\in \mathbb{R}^{13}$.
+   * @param u       Current control $\in \mathbb{R}^{4}$.
+   * @param u_prev  Previous control (unused in this cost).
+   * @param t       Timestep index.
+   * @return        Scalar running cost.
+   */
   __device__ float compute(const float * x, const float * u,
                            const float * /*u_prev*/, int t) const
   {
@@ -144,12 +186,18 @@ struct InformativeCost
     return cost;
   }
 
-    // -----------------------------------------------------------------------
+  /**
+   * @brief Compute the terminal cost.
+   *
+   * Strong goal attraction (nearest viewpoint) plus height penalty.
+   *
+   * @param x  Terminal state $\in \mathbb{R}^{13}$.
+   * @return   Scalar terminal cost.
+   */
   __device__ float terminal_cost(const float * x) const
   {
     float px = x[0], py = x[1], pz = x[2];
 
-        // Strong goal attraction at terminal (nearest viewpoint)
     float min_goal_dist = 1e10f;
     for (int g = 0; g < num_goals; ++g) {
       float gx = px - goals[g].x, gy = py - goals[g].y, gz = pz - goals[g].z;
@@ -158,7 +206,6 @@ struct InformativeCost
     }
     float goal_cost = 10.0f * min_goal_dist;
 
-        // Height penalty
     float dz = pz - target_altitude;
     float h_cost = height_weight * dz * dz;
 
@@ -167,6 +214,6 @@ struct InformativeCost
 };
 
 }   // namespace instantiations
-} // namespace mppi
+}  // namespace mppi
 
-#endif // MPPI_INFORMATIVE_COST_CUH
+#endif  // MPPI_INFORMATIVE_COST_CUH

@@ -1,3 +1,27 @@
+/**
+ * @file kmppi.cuh
+ * @brief Kernel-based MPPI (K-MPPI) controller with RBF interpolation.
+ *
+ * Instead of optimising the full $T \times n_u$ control sequence directly,
+ * K-MPPI parameterises the trajectory through $M$ support (knot) points
+ * $\boldsymbol{\theta} \in \mathbb{R}^{M \times n_u}$ and reconstructs
+ * the dense sequence via radial basis function (RBF) interpolation:
+ *
+ * $$
+ *   \mathbf{u}[t] = \sum_{m=0}^{M-1} W[t, m] \, \boldsymbol{\theta}[m]
+ * $$
+ *
+ * where $W = K_{T \times M} \, K_{M \times M}^{-1}$ is the interpolation
+ * matrix built from Gaussian RBF kernels
+ * $k(t_i, t_j) = \exp\!\bigl(-\frac{(t_i - t_j)^2}{2\sigma^2}\bigr)$.
+ *
+ * This reduces the effective search dimensionality from $T \cdot n_u$
+ * to $M \cdot n_u$, producing inherently smooth trajectories.
+ *
+ * @tparam Dynamics  Dynamics model (GPU-callable).
+ * @tparam Cost      Cost function (GPU-callable).
+ */
+
 #ifndef KMPPI_CONTROLLER_CUH
 #define KMPPI_CONTROLLER_CUH
 
@@ -6,26 +30,77 @@
 #include <cmath>
 #include <vector>
 
-namespace mppi
-{
+namespace mppi {
 
+/**
+ * @brief CUDA kernel to interpolate noise from support points to full horizon.
+ *
+ * For each sample $k$ and control channel $i$, computes:
+ *
+ * $$
+ *   \epsilon_{\text{interp}}[k, t, i] = \sum_{m=0}^{M-1} W[t, m] \, \epsilon_\theta[k, m, i]
+ * $$
+ *
+ * One thread per $(k, i)$ pair; loops over $T$ and $M$.
+ *
+ * @param noise_theta   Support-point noise $[K \times M \times n_u]$.
+ * @param W             Interpolation matrix $[T \times M]$.
+ * @param noise_interp  Output interpolated noise $[K \times T \times n_u]$.
+ * @param K             Number of samples.
+ * @param T             Horizon length.
+ * @param M             Number of support points.
+ * @param nu            Control dimension.
+ */
 __global__ void interpolation_kernel(
-  const float * noise_theta,   // (K, M, nu)
-  const float * W,             // (T, M)
-  float * noise_interp,        // (K, T, nu)
+  const float * noise_theta,
+  const float * W,
+  float * noise_interp,
   int K, int T, int M, int nu
 );
 
+/**
+ * @brief CUDA kernel to interpolate a single set of support points to a full sequence.
+ *
+ * Computes $\mathbf{u}[t, i] = \sum_m W[t, m] \, \theta[m, i]$.
+ * One thread per $(t, i)$.
+ *
+ * @param theta  Support-point values $[M \times n_u]$.
+ * @param W      Interpolation matrix $[T \times M]$.
+ * @param u_nom  Output control sequence $[T \times n_u]$.
+ * @param T      Horizon length.
+ * @param M      Number of support points.
+ * @param nu     Control dimension.
+ */
 __global__ void interpolate_single_kernel(
-  const float * theta,   // (M, nu)
-  const float * W,       // (T, M)
-  float * u_nom,         // (T, nu)
+  const float * theta,
+  const float * W,
+  float * u_nom,
   int T, int M, int nu
 );
 
+/**
+ * @brief K-MPPI controller with RBF kernel interpolation.
+ *
+ * Optimises in the low-dimensional support-point space and interpolates
+ * back to the full horizon for rollout evaluation.
+ *
+ * @tparam Dynamics  Dynamics model (GPU-callable).
+ * @tparam Cost      Cost function (GPU-callable).
+ */
 template<typename Dynamics, typename Cost>
 class KMPPIController {
 public:
+  /**
+   * @brief Construct the K-MPPI controller.
+   *
+   * Allocates device memory for support points, interpolated noise,
+   * and the interpolation matrix $W$. Computes $W$ on the host
+   * using Gaussian RBF kernels.
+   *
+   * @param config    MPPI config (uses `num_support_pts` for $M$).
+   * @param dynamics  Dynamics model instance.
+   * @param cost      Cost function instance.
+   */
   KMPPIController(const MPPIConfig & config, const Dynamics & dynamics, const Cost & cost)
   : config_(config), dynamics_(dynamics), cost_(cost)
   {
@@ -53,10 +128,10 @@ public:
     HANDLE_CURAND_ERROR(curandCreateGenerator(&gen_, CURAND_RNG_PSEUDO_DEFAULT));
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
 
-        // Compute Interpolation Matrix (W) on host and copy
     compute_interpolation_matrix();
   }
 
+  /** @brief Destructor. Frees all device buffers. */
   ~KMPPIController()
   {
     cudaFree(d_theta_);
@@ -71,21 +146,28 @@ public:
     curandDestroyGenerator(gen_);
   }
 
+  /**
+   * @brief Compute the RBF interpolation matrix $W$ on the host.
+   *
+   * Places $M$ support points uniformly across $[0, T-1]$ and builds:
+   *
+   * $$
+   *   W = K_{T \times M} \, K_{M \times M}^{-1}
+   * $$
+   *
+   * where $K_{ij} = \exp\!\bigl(-\frac{(t_i - t_j)^2}{2\sigma^2}\bigr)$
+   * and $\sigma$ equals the support-point spacing for smooth overlap.
+   */
   void compute_interpolation_matrix()
   {
-        // Simple RBF kernel implementation on host
     int T = config_.horizon;
     int M = config_.num_support_pts;
-    // RBF sigma should scale with support point spacing to ensure smooth
-    // interpolation. With spacing = (T-1)/(M-1), sigma ≈ spacing gives
-    // good overlap between adjacent basis functions.
     float spacing = (M > 1) ? static_cast<float>(T - 1) / (M - 1) : 1.0f;
     float sigma = spacing;
 
     Eigen::MatrixXf K(T, M);
     Eigen::MatrixXf Kmm(M, M);
 
-        // Time points
     Eigen::VectorXf t = Eigen::VectorXf::LinSpaced(T, 0, T - 1);
     Eigen::VectorXf tk = Eigen::VectorXf::LinSpaced(M, 0, T - 1);
 
@@ -105,38 +187,34 @@ public:
       }
     }
 
-        // Weights = K * inv(Kmm) ? No, solve Kmm * W' = K' -> W = K * inv(Kmm)
-        // JAX: weights = solve(Ktktk, K.T).T
-        // K.T is (M, T). solve gives (M, T). .T gives (T, M).
-        // So W = (inv(Kmm) * K')' = K * inv(Kmm)' = K * inv(Kmm) (since sym)
-
     Eigen::MatrixXf W = K * Kmm.ldlt().solve(Eigen::MatrixXf::Identity(M, M));
 
-        // Copy W to device (row major)
-        // Eigen is col major by default, need to be careful or use RowMajor.
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> W_row = W;
     HANDLE_ERROR(cudaMemcpy(d_interp_matrix_, W_row.data(), T * M * sizeof(float),
         cudaMemcpyHostToDevice));
   }
 
+  /**
+   * @brief Run the K-MPPI optimization loop.
+   *
+   * 1. Sample noise in support-point space $[K \times M \times n_u]$
+   * 2. Interpolate to full horizon $[K \times T \times n_u]$
+   * 3. Rollout all $K$ trajectories
+   * 4. Compute softmax weights, update $\boldsymbol{\theta}$
+   * 5. Interpolate updated $\boldsymbol{\theta}$ to get $\mathbf{u}_{\text{nom}}$
+   *
+   * @param state  Current state $\mathbf{x} \in \mathbb{R}^{n_x}$.
+   */
   void compute(const Eigen::VectorXf & state)
   {
     HANDLE_ERROR(cudaMemcpy(d_initial_state_, state.data(), config_.nx * sizeof(float),
         cudaMemcpyHostToDevice));
 
-        // 1. Sample theta noise
     HANDLE_CURAND_ERROR(curandGenerateNormal(gen_, d_noise_theta_,
         config_.num_samples * config_.num_support_pts * config_.nu, 0.0f, 1.0f));
 
-        // 2. Interpolate noise: noise_interp = noise_theta * W^T ?
-        // d_interp_matrix_ is (T, M). noise_theta is (K, M, nu).
-        // Result noise_interp is (K, T, nu).
-        // For each k, each nu: vec_T = W * vec_M.
-        // Parallelize over K and Nu. Loop over T and M (matrix vec mult).
-
     dim3 block(256);
-    dim3 grid((config_.num_samples + block.x - 1) / block.x);     // Grid covers samples
-        // Actually grid should cover K * Nu.
+    dim3 grid((config_.num_samples + block.x - 1) / block.x);
     int total_channels = config_.num_samples * config_.nu;
     dim3 grid_interp((total_channels + 256 - 1) / 256);
 
@@ -151,7 +229,6 @@ public:
       );
     HANDLE_ERROR(cudaGetLastError());
 
-        // 3. Rollout using interpolated noise
     kernels::rollout_kernel << < grid, block >> > (
       dynamics_,
       cost_,
@@ -164,7 +241,7 @@ public:
       );
     HANDLE_ERROR(cudaGetLastError());
 
-    // Compute softmax weights
+    // Softmax weights
     std::vector<float> h_costs(config_.num_samples);
     HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_, config_.num_samples * sizeof(float),
         cudaMemcpyDeviceToHost));
@@ -182,7 +259,6 @@ public:
       w /= sum_weights;
     }
 
-        // 5. Update Theta
     HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(), config_.num_samples * sizeof(float),
         cudaMemcpyHostToDevice));
 
@@ -210,12 +286,17 @@ public:
       );
   }
 
+  /** @brief Upload the last applied control (for rate cost). */
   void set_applied_control(const Eigen::VectorXf& u) {
     HANDLE_ERROR(cudaMemcpy(d_u_applied_, u.data(),
                             config_.nu * sizeof(float),
                             cudaMemcpyHostToDevice));
   }
 
+  /**
+   * @brief Retrieve the first optimal control action.
+   * @return First control $\mathbf{u}[0] \in \mathbb{R}^{n_u}$.
+   */
   Eigen::VectorXf get_action()
   {
     Eigen::VectorXf action(config_.nu);
@@ -225,60 +306,56 @@ public:
   }
 
 private:
-  MPPIConfig config_;
-  Dynamics dynamics_;
-  Cost cost_;
+  MPPIConfig config_;     ///< MPPI hyperparameters.
+  Dynamics dynamics_;     ///< Dynamics model.
+  Cost cost_;             ///< Cost function.
 
-  float * d_theta_;
-  float * d_noise_theta_;   // (K, M, nu)
-  float * d_noise_interp_;   // (K, T, nu)
-  float * d_u_nom_;   // (T, nu)
-  float * d_interp_matrix_;   // (T, M)
+  float * d_theta_;           ///< Support-point parameters $[M \times n_u]$.
+  float * d_noise_theta_;     ///< Support-point noise $[K \times M \times n_u]$.
+  float * d_noise_interp_;    ///< Interpolated noise $[K \times T \times n_u]$.
+  float * d_u_nom_;           ///< Dense nominal sequence $[T \times n_u]$.
+  float * d_interp_matrix_;   ///< RBF interpolation matrix $W$ $[T \times M]$.
 
-  float * d_costs_;
-  float * d_initial_state_;
-  float * d_weights_;
-  float * d_u_applied_;
+  float * d_costs_;           ///< Per-sample rollout costs $[K]$.
+  float * d_initial_state_;   ///< Current state $[n_x]$.
+  float * d_weights_;         ///< Softmax importance weights $[K]$.
+  float * d_u_applied_;       ///< Last applied control $[n_u]$.
 
-  curandGenerator_t gen_;
+  curandGenerator_t gen_;     ///< CuRAND generator.
 };
 
-// Kernels
+// ===========================================================================
+// Kernel Implementations
+// ===========================================================================
 
 __global__ void interpolation_kernel(
-  const float * noise_theta,   // (K, M, nu)
-  const float * W,             // (T, M)
-  float * noise_interp,        // (K, T, nu)
+  const float * noise_theta,
+  const float * W,
+  float * noise_interp,
   int K, int T, int M, int nu
 )
 {
-    // Thread per (k, i) -> K * nu
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= K * nu) {return;}
 
   int k = idx / nu;
   int i = idx % nu;
 
-    // For this sample k and channel i, compute vector over T
-    // noise_interp[k, t, i] = sum_m W[t, m] * noise_theta[k, m, i]
-
   for(int t = 0; t < T; ++t) {
     float sum = 0.0f;
     for(int m = 0; m < M; ++m) {
       float w_val = W[t * M + m];
-            // noise_theta index: k * (M * nu) + m * nu + i
       float n_val = noise_theta[k * (M * nu) + m * nu + i];
       sum += w_val * n_val;
     }
-        // noise_interp index: k * (T * nu) + t * nu + i
     noise_interp[k * (T * nu) + t * nu + i] = sum;
   }
 }
 
 __global__ void interpolate_single_kernel(
-  const float * theta,   // (M, nu)
-  const float * W,       // (T, M)
-  float * u_nom,         // (T, nu)
+  const float * theta,
+  const float * W,
+  float * u_nom,
   int T, int M, int nu
 )
 {
@@ -295,6 +372,6 @@ __global__ void interpolate_single_kernel(
   u_nom[idx] = sum;
 }
 
-} // namespace mppi
+}  // namespace mppi
 
-#endif // KMPPI_CONTROLLER_CUH
+#endif  // KMPPI_CONTROLLER_CUH

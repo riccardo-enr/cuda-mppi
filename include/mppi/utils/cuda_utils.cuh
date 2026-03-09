@@ -1,3 +1,12 @@
+/**
+ * @file cuda_utils.cuh
+ * @brief CUDA and CuRAND error-handling utilities.
+ *
+ * Provides assertion helpers and convenience macros for checking
+ * `cudaError_t` and `curandStatus_t` return codes. On failure, prints
+ * the error string with file/line information and aborts.
+ */
+
 #ifndef MPPI_CUDA_UTILS_CUH
 #define MPPI_CUDA_UTILS_CUH
 
@@ -6,6 +15,14 @@
 #include <iostream>
 #include <cstdio>
 
+/**
+ * @brief Assert that a CUDA API call succeeded; abort with diagnostic on failure.
+ *
+ * @param code   Return code from a CUDA API call.
+ * @param file   Source file name (`__FILE__`).
+ * @param line   Source line number (`__LINE__`).
+ * @param abort  If true (default), call `exit()` on error.
+ */
 inline void gpuAssert(cudaError_t code, const char * file, int line, bool abort = true)
 {
   if (code != cudaSuccess) {
@@ -16,6 +33,12 @@ inline void gpuAssert(cudaError_t code, const char * file, int line, bool abort 
   }
 }
 
+/**
+ * @brief Check for asynchronous CUDA errors (calls `cudaGetLastError`).
+ *
+ * @param file  Source file name (`__FILE__`).
+ * @param line  Source line number (`__LINE__`).
+ */
 inline void __cudaCheckError(const char * file, const int line)
 {
   cudaError err = cudaGetLastError();
@@ -25,6 +48,11 @@ inline void __cudaCheckError(const char * file, const int line)
   }
 }
 
+/**
+ * @brief Convert a `curandStatus_t` to a human-readable string.
+ * @param code  CuRAND status code.
+ * @return      Null-terminated error description.
+ */
 inline const char * curandGetErrorString(curandStatus_t code)
 {
   switch (code) {
@@ -48,6 +76,14 @@ inline const char * curandGetErrorString(curandStatus_t code)
   }
 }
 
+/**
+ * @brief Assert that a CuRAND API call succeeded; abort with diagnostic on failure.
+ *
+ * @param code   Return code from a CuRAND API call.
+ * @param file   Source file name (`__FILE__`).
+ * @param line   Source line number (`__LINE__`).
+ * @param abort  If true (default), call `exit()` on error.
+ */
 inline void curandAssert(curandStatus_t code, const char * file, int line, bool abort = true)
 {
   if (code != CURAND_STATUS_SUCCESS) {
@@ -58,8 +94,13 @@ inline void curandAssert(curandStatus_t code, const char * file, int line, bool 
   }
 }
 
+/** @brief Check for asynchronous CUDA errors at the call site. */
 #define CudaCheckError() __cudaCheckError(__FILE__, __LINE__)
+
+/** @brief Wrap a CUDA API call with file/line error checking. */
 #define HANDLE_ERROR(ans) {gpuAssert((ans), __FILE__, __LINE__);}
+
+/** @brief Wrap a CuRAND API call with file/line error checking. */
 #define HANDLE_CURAND_ERROR(ans) {curandAssert((ans), __FILE__, __LINE__);}
 
-#endif // MPPI_CUDA_UTILS_CUH
+#endif  // MPPI_CUDA_UTILS_CUH

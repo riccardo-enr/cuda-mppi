@@ -1,11 +1,53 @@
+/**
+ * @file i_mppi.cuh
+ * @brief Informative MPPI (I-MPPI) controller with biased sampling.
+ *
+ * Extends the base `MPPIController` to support **biased importance sampling**:
+ * a fraction $\alpha$ of the $K$ noise samples are shifted so that the
+ * resulting controls are centred around an informative reference trajectory
+ * $\mathbf{u}_{\text{ref}}$ instead of the current nominal $\mathbf{u}_{\text{nom}}$.
+ *
+ * ## Sampling distribution
+ *
+ * The mixture sampling distribution is:
+ *
+ * $$
+ *   Q(\mathbf{u}) = (1 - \alpha)\,\mathcal{N}(\mathbf{u}_{\text{nom}}, \boldsymbol{\Sigma})
+ *                 + \alpha\,\mathcal{N}(\mathbf{u}_{\text{ref}}, \boldsymbol{\Sigma})
+ * $$
+ *
+ * This is implemented by shifting the noise of biased samples:
+ * $\boldsymbol{\epsilon}'_k = \boldsymbol{\epsilon}_k + (\mathbf{u}_{\text{ref}} - \mathbf{u}_{\text{nom}})$,
+ * so that $\mathbf{u}_{\text{nom}} + \boldsymbol{\epsilon}'_k$ is centred at $\mathbf{u}_{\text{ref}}$.
+ *
+ * @tparam Dynamics  Dynamics model (GPU-callable).
+ * @tparam Cost      Cost function (GPU-callable).
+ */
+
 #ifndef IMPPI_CONTROLLER_CUH
 #define IMPPI_CONTROLLER_CUH
 
 #include "mppi/controllers/mppi.cuh"
 
-namespace mppi
-{
+namespace mppi {
 
+/**
+ * @brief CUDA kernel to shift noise samples toward the reference trajectory.
+ *
+ * For samples with index $k \geq$ `start_biased_idx`, applies:
+ *
+ * $$
+ *   \boldsymbol{\epsilon}_k[t, i] \mathrel{+}= u_{\text{ref}}[t, i] - u_{\text{nom}}[t, i]
+ * $$
+ *
+ * @param[in,out] noise             Noise buffer $[K \times T \times n_u]$.
+ * @param[in]     u_nom             Current nominal sequence $[T \times n_u]$.
+ * @param[in]     u_ref             Informative reference sequence $[T \times n_u]$.
+ * @param[in]     num_samples       Total number of samples $K$.
+ * @param[in]     horizon           Prediction horizon $T$.
+ * @param[in]     nu                Control dimension $n_u$.
+ * @param[in]     start_biased_idx  First sample index to bias.
+ */
 __global__ void apply_bias_kernel(
   float *noise,
   const float *u_nom,
@@ -20,13 +62,9 @@ __global__ void apply_bias_kernel(
     return;
   }
 
-        // Only apply bias to samples >= start_biased_idx
   if (k < start_biased_idx) {
     return;
   }
-
-        // Shift: noise = noise + (u_ref - u_nom)
-        // Effectively making u = u_nom + noise_shifted = u_ref + noise_original
 
   for (int t = 0; t < horizon; ++t) {
     for (int i = 0; i < nu; ++i) {
@@ -39,27 +77,59 @@ __global__ void apply_bias_kernel(
   }
 }
 
+/**
+ * @brief Informative MPPI controller.
+ *
+ * Inherits from `MPPIController` and overrides `compute()` to inject
+ * biased noise samples toward $\mathbf{u}_{\text{ref}}$ before the
+ * standard rollout and weight computation.
+ *
+ * ### Usage
+ *
+ * ```cpp
+ * IMPPIController<MyDynamics, MyCost> ctrl(config, dynamics, cost);
+ * ctrl.set_reference_trajectory(u_ref_flat);  // from informative planner
+ * ctrl.compute(current_state);
+ * auto action = ctrl.get_action();
+ * ctrl.shift();
+ * ```
+ *
+ * @tparam Dynamics  Dynamics model (GPU-callable).
+ * @tparam Cost      Cost function (GPU-callable).
+ */
 template<typename Dynamics, typename Cost>
 class IMPPIController : public MPPIController<Dynamics, Cost>
 {
 public:
+  /**
+   * @brief Construct the I-MPPI controller.
+   *
+   * Allocates the additional device buffer for $\mathbf{u}_{\text{ref}}$.
+   *
+   * @param config    MPPI config (uses `alpha` for bias fraction).
+   * @param dynamics  Dynamics model instance.
+   * @param cost      Cost function instance.
+   */
   IMPPIController(const MPPIConfig & config, const Dynamics & dynamics, const Cost & cost)
   : MPPIController<Dynamics, Cost>(config, dynamics, cost)
   {
-
-            // Allocate memory for reference trajectory
     HANDLE_ERROR(cudaMalloc(&d_u_ref_, config.horizon * config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_u_ref_, 0, config.horizon * config.nu * sizeof(float)));
   }
 
+  /** @brief Destructor. Frees the reference trajectory buffer. */
   ~IMPPIController()
   {
     cudaFree(d_u_ref_);
   }
 
+  /**
+   * @brief Upload an informative reference trajectory to the device.
+   *
+   * @param u_ref_flat  Flattened reference controls $\in \mathbb{R}^{T \cdot n_u}$.
+   */
   void set_reference_trajectory(const Eigen::VectorXf & u_ref_flat)
   {
-            // u_ref_flat should be size T * nu
     if (u_ref_flat.size() != this->config_.horizon * this->config_.nu) {
       std::cerr << "Error: Reference trajectory size mismatch!" << std::endl;
       return;
@@ -69,27 +139,42 @@ public:
                                     cudaMemcpyHostToDevice));
   }
 
+  /**
+   * @brief Update cost parameters (goal position and weight).
+   *
+   * @param goal          Goal position (NED).
+   * @param lambda_goal   Goal attraction weight.
+   */
   void update_cost_params(float3 goal, float lambda_goal)
   {
     this->cost_.goal = goal;
     this->cost_.lambda_goal = lambda_goal;
   }
 
-        // Override compute to include biased sampling
+  /**
+   * @brief Run the I-MPPI optimization loop (biased sampling variant).
+   *
+   * Steps:
+   * 1. Copy state to device
+   * 2. Sample $K$ standard normal noise vectors
+   * 3. Shift the last $\lfloor \alpha K \rfloor$ samples toward $\mathbf{u}_{\text{ref}}$
+   * 4. Rollout all $K$ trajectories
+   * 5. Compute softmax importance weights
+   * 6. Update $\mathbf{u}_{\text{nom}}$ via weighted noise sum
+   *
+   * @param state  Current state $\mathbf{x} \in \mathbb{R}^{n_x}$.
+   */
   void compute(const Eigen::VectorXf & state)
   {
-            // 1. Copy state to device
     HANDLE_ERROR(cudaMemcpy(this->d_initial_state_, state.data(),
                                     this->config_.nx * sizeof(float), cudaMemcpyHostToDevice));
 
-            // 2. Sample Standard Noise (Normal Distribution)
     HANDLE_CURAND_ERROR(curandGenerateNormal(this->gen_, this->d_noise_,
                                                      this->config_.num_samples *
         this->config_.horizon * this->config_.nu,
                                                      0.0f, 1.0f));
 
-            // 3. Apply Bias to a subset of samples
-            // alpha determines fraction of samples to be biased towards u_ref
+    // Apply bias to alpha fraction of samples
     int num_biased = (int)(this->config_.num_samples * this->config_.alpha);
     int start_biased_idx = this->config_.num_samples - num_biased;
 
@@ -108,9 +193,7 @@ public:
       HANDLE_ERROR(cudaGetLastError());
     }
 
-            // 4. Launch Rollout Kernel (Standard)
-            // The noise is now "shifted" for biased samples, so standard rollout
-            // u = u_nom + noise will produce trajectories centered at u_ref for those samples.
+    // Rollout (standard kernel — biased noise makes u centred at u_ref)
     dim3 block(256);
     dim3 grid((this->config_.num_samples + block.x - 1) / block.x);
 
@@ -126,16 +209,7 @@ public:
     HANDLE_ERROR(cudaGetLastError());
     HANDLE_ERROR(cudaDeviceSynchronize());
 
-            // 5. Compute Weights (Standard Softmax)
-            // Note: For biased importance sampling, technically we need to adjust weights
-            // by the ratio q(u)/p(u).
-            // However, I-MPPI usually employs a mixture distribution approach where
-            // samples are treated equally in the softmax if they are drawn from the mixture.
-            // The standard MPPI weight formula w ~ exp(-cost/lambda) works for the mixture Q
-            // if we consider Q as the sampling distribution.
-            // Let's stick to standard weighting for now as per "Biased-MPPI" common impl.
-
-            // Simple Host-side Weighting (copied from base for prototype)
+    // Softmax weights
     std::vector<float> h_costs(this->config_.num_samples);
     HANDLE_ERROR(cudaMemcpy(h_costs.data(), this->d_costs_,
                                     this->config_.num_samples * sizeof(float),
@@ -160,7 +234,7 @@ public:
       h_weights[k] /= sum_weights;
     }
 
-            // 6. Update U_nom
+    // Update u_nom
     HANDLE_ERROR(cudaMemcpy(this->d_weights_, h_weights.data(),
                                     this->config_.num_samples * sizeof(float),
         cudaMemcpyHostToDevice));
@@ -180,9 +254,9 @@ public:
   }
 
 private:
-  float *d_u_ref_;
+  float *d_u_ref_;  ///< Informative reference trajectory $[T \times n_u]$ (device).
 };
 
-} // namespace mppi
+}  // namespace mppi
 
-#endif // IMPPI_CONTROLLER_CUH
+#endif  // IMPPI_CONTROLLER_CUH
