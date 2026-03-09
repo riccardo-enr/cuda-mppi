@@ -1,3 +1,12 @@
+/**
+ * @file kernels.cuh
+ * @brief Core CUDA rollout kernel for MPPI trajectory sampling.
+ *
+ * Each GPU thread simulates one complete trajectory of length $T$, applying
+ * perturbed controls and accumulating the running + terminal cost. This is
+ * the computational bottleneck of MPPI — all $K$ rollouts execute in parallel.
+ */
+
 #ifndef MPPI_KERNELS_CUH
 #define MPPI_KERNELS_CUH
 
@@ -8,22 +17,62 @@
 namespace mppi {
 namespace kernels {
 
+/**
+ * @brief Parallel trajectory rollout kernel.
+ *
+ * Thread $k$ simulates a full $T$-step trajectory starting from
+ * `initial_state` and accumulates the total cost into `costs[k]`.
+ *
+ * ## Control perturbation
+ *
+ * For most samples the applied control at timestep $t$ is:
+ *
+ * $$
+ *   \mathbf{u}_k[t] = \mathbf{u}_{\text{nom}}[t] + \boldsymbol{\epsilon}_k[t] \odot \boldsymbol{\sigma}
+ * $$
+ *
+ * A fraction `pure_noise_percentage` of samples use zero-mean noise
+ * ($\mathbf{u}_k[t] = \boldsymbol{\epsilon}_k[t] \odot \boldsymbol{\sigma}$) for exploration.
+ *
+ * ## Importance sampling correction (I-MPPI)
+ *
+ * When $\alpha < 1$ the kernel adds a likelihood-ratio cost to correct
+ * for the biased sampling distribution:
+ *
+ * $$
+ *   S_k \mathrel{+}= \frac{\lambda (1 - \alpha)}{2} \sum_{t,i}
+ *     \frac{m_{t,i} (m_{t,i} - 2 u_{k,t,i})}{\sigma_i^2}
+ * $$
+ *
+ * where $m_{t,i} = u_{\text{nom}}[t,i]$.
+ *
+ * @tparam Dynamics  Model with `__device__ void step(x, u, x_next, dt)`.
+ * @tparam Cost      Cost with `__device__ float compute(x, u, u_prev, t)`
+ *                   and `__device__ float terminal_cost(x)`.
+ *
+ * @param[in]  dynamics      Dynamics model (passed by value to registers).
+ * @param[in]  cost          Cost function (passed by value to registers).
+ * @param[in]  config        MPPI configuration.
+ * @param[in]  initial_state Current state $\mathbf{x}_0 \in \mathbb{R}^{n_x}$.
+ * @param[in]  u_nom         Nominal control sequence $[T \times n_u]$.
+ * @param[in]  noise         $\mathcal{N}(0,1)$ samples $[K \times T \times n_u]$.
+ * @param[in]  u_applied     Last applied control $[n_u]$ (for rate cost at $t=0$).
+ * @param[out] costs         Per-sample total cost $[K]$.
+ */
 template <typename Dynamics, typename Cost>
 __global__ void rollout_kernel(
     Dynamics dynamics, Cost cost, MPPIConfig config,
     const float* __restrict__ initial_state,
-    const float* __restrict__ u_nom,      // Nominal control (T, nu)
-    const float* __restrict__ noise,      // Noise (K, T, nu)
-    const float* __restrict__ u_applied,  // Last applied control (nu)
-    float* __restrict__ costs             // Output costs (K)
-) {
+    const float* __restrict__ u_nom,
+    const float* __restrict__ noise,
+    const float* __restrict__ u_applied,
+    float* __restrict__ costs) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= config.num_samples) {
     return;
   }
 
-  // Use compile-time constants if available, otherwise fallback to local arrays
-  // assuming reasonable max dimensions or dynamic indexing if supported
+  // Register-resident state and control buffers (max dimensions).
   constexpr int MAX_NX = 32;
   constexpr int MAX_NU = 12;
 
@@ -45,7 +94,7 @@ __global__ void rollout_kernel(
   float total_cost = 0.0f;
 
   for (int t = 0; t < config.horizon; ++t) {
-    // Compute control: perturbed (most samples) or pure noise (exploration)
+    // Determine if this sample uses pure-noise exploration
     const bool pure_noise =
         config.pure_noise_percentage > 0.0f &&
         k >= static_cast<int>((1.0f - config.pure_noise_percentage) *
@@ -62,13 +111,13 @@ __global__ void rollout_kernel(
       }
     }
 
-    // Step dynamics
+    // Step dynamics: x_next = f(x, u)
     dynamics.step(x, u, x_next, config.dt);
 
-    // Compute cost (with rate-of-change via u_prev)
+    // Running cost (includes rate-of-change via u_prev)
     total_cost += cost.compute(x, u, u_prev, t);
 
-    // Likelihood ratio cost (importance sampling correction)
+    // Likelihood ratio cost (importance sampling correction for I-MPPI)
     if (config.alpha < 1.0f) {
       float lr_cost = 0.0f;
       for (int i = 0; i < config.nu; ++i) {
@@ -79,12 +128,12 @@ __global__ void rollout_kernel(
       total_cost += 0.5f * config.lambda * (1.0f - config.alpha) * lr_cost;
     }
 
-    // Update u_prev for next timestep
+    // Shift u_prev for next timestep
     for (int i = 0; i < config.nu; ++i) {
       u_prev[i] = u[i];
     }
 
-    // Update state
+    // Advance state
     for (int i = 0; i < config.nx; ++i) {
       x[i] = x_next[i];
     }

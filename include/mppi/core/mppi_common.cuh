@@ -1,43 +1,73 @@
+/**
+ * @file mppi_common.cuh
+ * @brief Shared configuration structure for all MPPI controller variants.
+ *
+ * Defines `MPPIConfig`, the central hyperparameter struct passed (by value)
+ * to GPU kernels. All MPPI variants (standard, SMPPI, KMPPI, I-MPPI) share
+ * this struct and ignore the fields they do not use.
+ */
+
 #ifndef MPPI_COMMON_CUH
 #define MPPI_COMMON_CUH
 
 #include <cuda_runtime.h>
 
-namespace mppi
-{
+namespace mppi {
 
-struct MPPIConfig
-{
-  int num_samples;        // K
-  int horizon;            // T
-  int nx;                 // State dimension
-  int nu;                 // Control dimension
-  float lambda;           // Temperature
-  float dt;               // Time step
-  float u_scale;          // Control scale (uniform, legacy)
-  float control_sigma[12] = {1,1,1,1, 1,1,1,1, 1,1,1,1}; // Per-dim noise std dev
+/**
+ * @brief Hyperparameters for MPPI and its variants.
+ *
+ * Passed by value to CUDA kernels so that all fields reside in fast GPU
+ * registers. The struct is intentionally kept POD-like with fixed-size
+ * arrays to guarantee device compatibility.
+ *
+ * ## Core parameters
+ *
+ * | Symbol       | Field              | Description |
+ * |--------------|--------------------|----------------------------------------|
+ * | $K$          | `num_samples`      | Number of sampled rollouts | | $T$ |
+ * `horizon`          | Prediction horizon length              | | $n_x$ | `nx`
+ * | State dimensionality                   | | $n_u$        | `nu` | Control
+ * dimensionality ($\leq 12$)     | | $\lambda$    | `lambda`           |
+ * Temperature / inverse sensitivity      | | $\Delta t$   | `dt` | Integration
+ * time step                  | | $\sigma_i$   | `control_sigma[i]` |
+ * Per-dimension noise standard deviation | | $\alpha$     | `learning_rate` |
+ * Update step size (1.0 = full update)   |
+ */
+struct MPPIConfig {
+  /// @name Core MPPI parameters
+  /// @{
+  int num_samples;  ///< $K$ — number of sampled rollouts.
+  int horizon;      ///< $T$ — prediction horizon length.
+  int nx;           ///< $n_x$ — state dimension.
+  int nu;           ///< $n_u$ — control dimension ($\leq 12$).
+  float lambda;     ///< $\lambda$ — temperature (inverse sensitivity).
+  float dt;         ///< $\Delta t$ — integration time step.
+  float u_scale;    ///< Uniform control scale (legacy, prefer `control_sigma`).
+  float control_sigma[12] = {
+      1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1};  ///< $\sigma_i$ — per-dimension noise std dev.
+  /// @}
 
-    // SMPPI specific
-  float w_action_seq_cost;
+  /// @name Variant-specific parameters
+  /// @{
+  float
+      w_action_seq_cost;  ///< SMPPI: weight on action-sequence smoothness cost.
+  int num_support_pts;    ///< KMPPI: number of support (knot) points.
+  float lambda_info;      ///< I-MPPI: information gain weight $\lambda_I$.
+  float alpha;  ///< I-MPPI: biased sampling mixture weight $\alpha \in [0, 1]$.
+  /// @}
 
-    // KMPPI specific
-  int num_support_pts;
-
-    // I-MPPI specific
-  float lambda_info;      // Information gain weight
-  float alpha;            // Biased sampling mixture weight [0, 1]
-
-    // Update step size (standard MPPI = 1.0)
-  float learning_rate = 1.0f;
-
-    // Iterative refinement
-  int num_iters = 1;                     // Optimization iterations per compute()
-  float std_dev_decay = 1.0f;            // Noise std dev decay per iteration
-
-    // Exploration
-  float pure_noise_percentage = 0.0f;    // Fraction of samples with zero-mean noise
+  /// @name Optimization tuning
+  /// @{
+  float learning_rate = 1.0f;  ///< Update step size (standard MPPI = 1.0).
+  int num_iters = 1;           ///< Refinement iterations per `compute()` call.
+  float std_dev_decay = 1.0f;  ///< Multiplicative $\sigma$ decay per iteration.
+  float pure_noise_percentage =
+      0.0f;  ///< Fraction of samples using zero-mean (exploration) noise.
+  /// @}
 };
 
-} // namespace mppi
+}  // namespace mppi
 
-#endif // MPPI_COMMON_CUH
+#endif  // MPPI_COMMON_CUH
