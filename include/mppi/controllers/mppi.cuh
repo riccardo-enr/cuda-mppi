@@ -151,6 +151,12 @@ class MPPIController {
     HANDLE_ERROR(
         cudaMemset(d_u_nom_, 0, config.horizon * config.nu * sizeof(float)));
 
+    // Reference bias buffer (for split sampling)
+    HANDLE_ERROR(
+        cudaMalloc(&d_u_ref_, config.horizon * config.nu * sizeof(float)));
+    HANDLE_ERROR(
+        cudaMemset(d_u_ref_, 0, config.horizon * config.nu * sizeof(float)));
+
     // Last applied control (for rate-of-change cost)
     HANDLE_ERROR(cudaMalloc(&d_u_applied_, config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_u_applied_, 0, config.nu * sizeof(float)));
@@ -166,6 +172,7 @@ class MPPIController {
    */
   ~MPPIController() {
     cudaFree(d_u_nom_);
+    cudaFree(d_u_ref_);
     cudaFree(d_costs_);
     cudaFree(d_initial_state_);
     cudaFree(d_weights_);
@@ -193,6 +200,31 @@ class MPPIController {
   void set_applied_control(const Eigen::VectorXf& u) {
     HANDLE_ERROR(cudaMemcpy(d_u_applied_, u.data(), config_.nu * sizeof(float),
                             cudaMemcpyHostToDevice));
+  }
+
+  /**
+   * @brief Upload a reference control sequence for biased sampling.
+   *
+   * When set, a fraction `alpha` of noise samples will be shifted toward
+   * this reference, implementing split sampling (warm-start + bias).
+   *
+   * @param u_ref Flattened reference controls $\in \mathbb{R}^{T \cdot n_u}$.
+   */
+  void set_reference_sequence(const std::vector<float>& u_ref) {
+    int expected = config_.horizon * config_.nu;
+    if (static_cast<int>(u_ref.size()) != expected) {
+      return;
+    }
+    HANDLE_ERROR(cudaMemcpy(d_u_ref_, u_ref.data(), expected * sizeof(float),
+                            cudaMemcpyHostToDevice));
+    has_ref_bias_ = true;
+  }
+
+  /**
+   * @brief Clear the reference bias. All samples will explore around u_nom.
+   */
+  void clear_reference_sequence() {
+    has_ref_bias_ = false;
   }
 
   /**
@@ -235,6 +267,22 @@ class MPPIController {
       HANDLE_CURAND_ERROR(curandGenerateNormal(
           gen_, d_noise_,
           config_.num_samples * config_.horizon * config_.nu, 0.0f, 1.0f));
+
+      // Apply reference bias to alpha fraction of samples (split sampling)
+      if (has_ref_bias_ && iter_config.alpha > 0.0f) {
+        int num_biased =
+            static_cast<int>(iter_config.num_samples * iter_config.alpha);
+        int start_biased_idx = iter_config.num_samples - num_biased;
+        if (num_biased > 0) {
+          dim3 bias_block(256);
+          dim3 bias_grid(
+              (iter_config.num_samples + bias_block.x - 1) / bias_block.x);
+          kernels::apply_bias_kernel<<<bias_grid, bias_block>>>(
+              d_noise_, d_u_nom_, d_u_ref_, iter_config.num_samples,
+              iter_config.horizon, iter_config.nu, start_biased_idx);
+          HANDLE_ERROR(cudaGetLastError());
+        }
+      }
 
       // Launch Rollout Kernel
       dim3 block(256);
@@ -342,11 +390,13 @@ class MPPIController {
   /// @name Device memory buffers
   /// @{
   float* d_u_nom_;          ///< Nominal control sequence $[T \times n_u]$.
+  float* d_u_ref_;          ///< Reference bias sequence $[T \times n_u]$.
   float* d_noise_;          ///< Sampled noise $[K \times T \times n_u]$.
   float* d_costs_;          ///< Per-sample rollout costs $[K]$.
   float* d_initial_state_;  ///< Current state $[n_x]$.
   float* d_weights_;        ///< Softmax importance weights $[K]$.
   float* d_u_applied_;      ///< Last applied control $[n_u]$ (for rate cost).
+  bool has_ref_bias_ = false;  ///< Whether reference bias is active.
   /// @}
 
   curandGenerator_t gen_;   ///< CuRAND pseudo-random number generator.

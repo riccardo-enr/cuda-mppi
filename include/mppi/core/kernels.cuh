@@ -145,6 +145,45 @@ __global__ void rollout_kernel(
   costs[k] = total_cost;
 }
 
+/**
+ * @brief CUDA kernel to shift noise samples toward a reference trajectory.
+ *
+ * For samples with index $k \geq$ `start_biased_idx`, applies:
+ *
+ * $$
+ *   \boldsymbol{\epsilon}_k[t, i] \mathrel{+}= u_{\text{ref}}[t, i] - u_{\text{nom}}[t, i]
+ * $$
+ *
+ * @param[in,out] noise             Noise buffer $[K \times T \times n_u]$.
+ * @param[in]     u_nom             Current nominal sequence $[T \times n_u]$.
+ * @param[in]     u_ref             Reference sequence $[T \times n_u]$.
+ * @param[in]     num_samples       Total number of samples $K$.
+ * @param[in]     horizon           Prediction horizon $T$.
+ * @param[in]     nu                Control dimension $n_u$.
+ * @param[in]     start_biased_idx  First sample index to bias.
+ */
+__global__ inline void apply_bias_kernel(
+    float* noise,
+    const float* u_nom,
+    const float* u_ref,
+    int num_samples,
+    int horizon,
+    int nu,
+    int start_biased_idx) {
+  int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k >= num_samples || k < start_biased_idx) {
+    return;
+  }
+
+  for (int t = 0; t < horizon; ++t) {
+    for (int i = 0; i < nu; ++i) {
+      int idx = k * (horizon * nu) + t * nu + i;
+      int u_idx = t * nu + i;
+      noise[idx] += u_ref[u_idx] - u_nom[u_idx];
+    }
+  }
+}
+
 }  // namespace kernels
 }  // namespace mppi
 

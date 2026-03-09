@@ -23,16 +23,34 @@ namespace mppi {
  *
  * ## Core parameters
  *
- * | Symbol       | Field              | Description |
- * |--------------|--------------------|----------------------------------------|
- * | $K$          | `num_samples`      | Number of sampled rollouts | | $T$ |
- * `horizon`          | Prediction horizon length              | | $n_x$ | `nx`
- * | State dimensionality                   | | $n_u$        | `nu` | Control
- * dimensionality ($\leq 12$)     | | $\lambda$    | `lambda`           |
- * Temperature / inverse sensitivity      | | $\Delta t$   | `dt` | Integration
- * time step                  | | $\sigma_i$   | `control_sigma[i]` |
- * Per-dimension noise standard deviation | | $\alpha$     | `learning_rate` |
- * Update step size (1.0 = full update)   |
+ * | Symbol     | Field              | Description                            |
+ * |------------|--------------------|----------------------------------------|
+ * | $K$        | `num_samples`      | Number of sampled rollouts             |
+ * | $T$        | `horizon`          | Prediction horizon length              |
+ * | $n_x$      | `nx`               | State dimensionality                   |
+ * | $n_u$      | `nu`               | Control dimensionality ($\leq 12$)     |
+ * | $\lambda$  | `lambda`           | Temperature / inverse sensitivity      |
+ * | $\Delta t$ | `dt`               | Integration time step                  |
+ * | $\sigma_i$ | `control_sigma[i]` | Per-dimension noise standard deviation |
+ * |            | `u_scale`          | Uniform control scale (legacy)         |
+ *
+ * ## Variant-specific parameters
+ *
+ * | Symbol       | Field                | Description                                  |
+ * |--------------|----------------------|----------------------------------------------|
+ * |              | `w_action_seq_cost`  | SMPPI: action-sequence smoothness weight      |
+ * |              | `num_support_pts`    | KMPPI: number of support (knot) points        |
+ * | $\lambda_I$  | `lambda_info`        | I-MPPI: information gain weight               |
+ * | $\alpha$     | `alpha`              | I-MPPI: biased sampling mixture weight [0, 1] |
+ *
+ * ## Optimization tuning
+ *
+ * | Symbol | Field                    | Description                                        |
+ * |--------|--------------------------|----------------------------------------------------|
+ * |        | `learning_rate`          | Update step size (1.0 = full update)               |
+ * |        | `num_iters`              | Refinement iterations per `compute()` call         |
+ * |        | `std_dev_decay`          | Multiplicative $\sigma$ decay per iteration        |
+ * |        | `pure_noise_percentage`  | Fraction of samples using zero-mean exploration    |
  */
 struct MPPIConfig {
   /// @name Core MPPI parameters
