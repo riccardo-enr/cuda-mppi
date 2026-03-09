@@ -4,6 +4,8 @@
 
 # Build directories
 build/
+install/
+log/
 dist/
 *.egg-info/
 _skbuild/
