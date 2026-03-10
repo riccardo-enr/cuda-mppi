@@ -186,6 +186,10 @@ class MPPIController {
   Cost& cost() { return cost_; }
   /** @brief Const access to the cost function. */
   const Cost& cost() const { return cost_; }
+  /** @brief Replace the dynamics model instance. */
+  void set_dynamics(const Dynamics& dynamics) { dynamics_ = dynamics; }
+  /** @brief Mutable access to the dynamics model. */
+  Dynamics& dynamics() { return dynamics_; }
   /** @brief Raw device pointer to the nominal control sequence $[T \times n_u]$. */
   float* get_u_nom_ptr() { return d_u_nom_; }
 
