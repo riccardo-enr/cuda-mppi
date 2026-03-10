@@ -33,7 +33,20 @@ namespace mppi {
 namespace instantiations {
 
 /**
- * @brief 3D point-mass dynamics with per-axis acceleration bounds.
+ * @brief 3D point-mass dynamics with per-axis acceleration bounds and
+ *        optional disturbance injection.
+ *
+ * Supports two disturbance modes (both default to zero — no-op):
+ * - **Constant**: set `disturbance[3]` to a fixed acceleration offset
+ *   (used by MR-MPPI with MRAC estimator).
+ * - **Schedule**: set `d_schedule` to point at a `(horizon × 3)` float
+ *   array of per-timestep disturbances (used by HOSM-MPPI with linear
+ *   extrapolation). When `d_schedule != nullptr`, it takes priority.
+ *
+ * `step_counter` tracks the current timestep within a rollout for
+ * indexing into `d_schedule`. It is `mutable` so `step()` can be
+ * `const`-qualified; thread-safety is guaranteed because the kernel
+ * receives the dynamics struct **by value** (each GPU thread owns a copy).
  */
 struct PointMass3D
 {
@@ -43,11 +56,18 @@ struct PointMass3D
   float gravity = 9.81f;                  ///< Gravitational acceleration (m/s$^2$).
   float a_max[3] = {5.0f, 5.0f, 5.0f};   ///< Per-axis acceleration bounds (m/s$^2$).
 
+  /* --- Disturbance injection (defaults to zero = no disturbance) --- */
+  float disturbance[3] = {0.0f, 0.0f, 0.0f}; ///< Constant disturbance acceleration (NED).
+  const float* d_schedule = nullptr;          ///< Per-timestep disturbance schedule (H×3, device ptr).
+  int horizon = 0;                            ///< Length of `d_schedule` (number of timesteps).
+  mutable int step_counter = 0;               ///< Current rollout timestep (reset before each rollout).
+
   /**
    * @brief Euler integration step (device).
    *
-   * Clamps controls to $[-a_{\max}, a_{\max}]$, then integrates:
-   * $\mathbf{v} \mathrel{+}= \mathbf{a} \, \Delta t$,
+   * Clamps controls to $[-a_{\max}, a_{\max}]$, adds disturbance, then
+   * integrates:
+   * $\mathbf{v} \mathrel{+}= (\mathbf{u}_{\text{clamp}} + \mathbf{d}) \, \Delta t$,
    * $\mathbf{p} \mathrel{+}= \mathbf{v}_{\text{new}} \, \Delta t$.
    *
    * @param x       Current state $[p_x, p_y, p_z, v_x, v_y, v_z]$.
@@ -59,9 +79,20 @@ struct PointMass3D
     const float* x, const float* u_raw,
     float* x_next, float dt) const
   {
+    /* Resolve disturbance for this timestep. */
+    float d[3];
+    if (d_schedule != nullptr && horizon > 0) {
+      int t = min(step_counter, horizon - 1);
+      for (int i = 0; i < 3; ++i) d[i] = d_schedule[t * 3 + i];
+    } else {
+      for (int i = 0; i < 3; ++i) d[i] = disturbance[i];
+    }
+    step_counter++;
+
     float u[3];
     for (int i = 0; i < 3; ++i) {
       u[i] = fminf(fmaxf(u_raw[i], -a_max[i]), a_max[i]);
+      u[i] += d[i];
     }
 
     x_next[3] = x[3] + u[0] * dt;
@@ -82,10 +113,21 @@ struct PointMass3D
    */
   void step_host(Eigen::VectorXf& state, const Eigen::VectorXf& action, float dt) const
   {
+    /* Resolve disturbance for this timestep (host-side). */
+    float d[3];
+    if (d_schedule != nullptr && horizon > 0) {
+      int t = std::min(step_counter, horizon - 1);
+      for (int i = 0; i < 3; ++i) d[i] = d_schedule[t * 3 + i];
+    } else {
+      for (int i = 0; i < 3; ++i) d[i] = disturbance[i];
+    }
+    step_counter++;
+
     float u[3];
     for (int i = 0; i < 3; ++i) {
       float v = action(i);
       u[i] = std::fmin(std::fmax(v, -a_max[i]), a_max[i]);
+      u[i] += d[i];
     }
 
     state(3) += u[0] * dt;
