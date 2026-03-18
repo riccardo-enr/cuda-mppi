@@ -13,3 +13,6 @@ target_link_libraries(i_mppi_test PRIVATE cuda_mppi_lib)
 
 add_executable(fsmi_unit_test fsmi_unit_test.cu)
 target_link_libraries(fsmi_unit_test PRIVATE cuda_mppi_lib)
+
+add_executable(bspline_test bspline_test.cu)
+target_link_libraries(bspline_test PRIVATE cuda_mppi_lib)
