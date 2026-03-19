@@ -2,8 +2,8 @@
  * @file ground_cost.cuh
  * @brief Multi-layer cost function for UGV informative MPPI.
  *
- * Adapted from InformativeCost for 5D unicycle state
- * $[x, y, \theta, v, \omega]$ with 2D control $[a, \alpha]$.
+ * For 4D bicycle state $[x, y, \theta, v]$ with 2D control
+ * $[\text{throttle}, \text{steering}]$ (both normalised $[-1, 1]$).
  *
  * | # | Layer                      | Weight             | Sign |
  * |---|----------------------------|--------------------|------|
@@ -14,7 +14,7 @@
  * | 5 | Info field lookup          | `lambda_info`      | -    |
  * | 6 | Action regularisation      | `action_reg`       | +    |
  * | 7 | Velocity penalty           | `vel_weight`       | +    |
- * | 8 | Angular velocity penalty   | `omega_weight`     | +    |
+ * | 8 | Steering penalty           | `steering_weight`  | +    |
  */
 
 #ifndef MPPI_GROUND_COST_CUH
@@ -44,7 +44,7 @@ struct GroundCost
   float action_reg = 0.01f;
   float vel_weight = 0.5f;
   float v_ref = 1.0f;          ///< Preferred forward speed (m/s).
-  float omega_weight = 0.1f;
+  float steering_weight = 0.1f;
 
   /// Multi-goal support
   static constexpr int MAX_GOALS = 32;
@@ -60,15 +60,15 @@ struct GroundCost
   /**
    * @brief Compute the running cost at timestep t.
    *
-   * State: [x, y, theta, v, omega]
-   * Control: [a, alpha]
+   * State: [x, y, theta, v]
+   * Control: [throttle, steering] (normalised [-1, 1])
    */
   __device__ float compute(const float* x, const float* u,
                            const float* /*u_prev*/, int /*t*/) const
   {
     float cost = 0.0f;
     float px = x[0], py = x[1];
-    float theta = x[2], v = x[3], omega = x[4];
+    float theta = x[2], v = x[3];
 
     // 1. Grid-based obstacle cost
     int2 gi = grid.world_to_grid(make_float2(px, py));
@@ -118,8 +118,8 @@ struct GroundCost
     float dv = v - v_ref;
     cost += vel_weight * dv * dv;
 
-    // 8. Angular velocity penalty (smooth turning)
-    cost += omega_weight * omega * omega;
+    // 8. Steering penalty (smooth turning)
+    cost += steering_weight * u[1] * u[1];
 
     return cost;
   }
