@@ -148,6 +148,18 @@ struct GroundCost
     float px = x[0], py = x[1];
     float v = x[3];
 
+    float cost = 0.0f;
+
+    // Collision check (2x running penalty — ending in obstacle is worse)
+    int2 gi = grid.world_to_grid(make_float2(px, py));
+    int idx = grid.get_index(gi.x, gi.y);
+    float p_occ = (idx >= 0) ? grid.data[idx] : 0.5f;
+    if (p_occ >= occ_threshold) {
+      cost += 2.0f * collision_penalty;
+    } else if (p_occ > 0.0f) {
+      cost += 2.0f * collision_penalty * (p_occ / occ_threshold);
+    }
+
     // Goal attraction (10x running weight)
     float min_goal_dist = 1e10f;
     for (int g = 0; g < num_goals; ++g) {
@@ -155,12 +167,12 @@ struct GroundCost
       float d = sqrtf(gx * gx + gy * gy);
       if (d < min_goal_dist) min_goal_dist = d;
     }
-    float goal_cost = 10.0f * min_goal_dist;
+    cost += 10.0f * min_goal_dist;
 
     // Terminal velocity penalty (want near-zero at goal)
-    float vel_cost = 5.0f * v * v;
+    cost += 5.0f * v * v;
 
-    return goal_cost + vel_cost;
+    return cost;
   }
 };
 
