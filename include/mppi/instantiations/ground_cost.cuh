@@ -70,12 +70,17 @@ struct GroundCost
     float px = x[0], py = x[1];
     float theta = x[2], v = x[3];
 
-    // 1. Grid-based obstacle cost
+    // 1. Grid-based obstacle cost (continuous ramp + hard penalty)
+    // Above threshold: full collision penalty.  Below threshold: smooth
+    // ramp proportional to occupancy — gives MPPI a gradient to steer away.
     int2 gi = grid.world_to_grid(make_float2(px, py));
     int idx = grid.get_index(gi.x, gi.y);
-    if (idx >= 0) {
-      float p = grid.data[idx];
-      if (p >= occ_threshold) { cost += collision_penalty; }
+    float p_occ = (idx >= 0) ? grid.data[idx] : 0.0f;
+    bool in_obstacle = (p_occ >= occ_threshold);
+    if (in_obstacle) {
+      cost += collision_penalty;
+    } else if (p_occ > 0.0f) {
+      cost += collision_penalty * (p_occ / occ_threshold);
     }
 
     // 2. Bounds cost — ramp margin so MPPI plans turns before hitting wall
@@ -101,12 +106,17 @@ struct GroundCost
     cost += goal_weight * min_goal_dist;
 
     // 4. Uniform-FSMI local information reward (theta directly from state)
-    float info_gain = compute_uniform_fsmi_at_pose(
-        grid, make_float2(px, py), theta, uniform_cfg);
-    cost -= lambda_local * info_gain;
+    // Suppressed in occupied cells — the info reward near obstacle boundaries
+    // can exceed the collision penalty, attracting the vehicle into walls.
+    if (!in_obstacle) {
+      float info_gain = compute_uniform_fsmi_at_pose(
+          grid, make_float2(px, py), theta, uniform_cfg);
+      cost -= lambda_local * info_gain;
+    }
 
     // 5. Info field lookup (strategic guidance)
-    if (info_field.d_field != nullptr) {
+    // Suppressed in occupied cells — same rationale as layer 4.
+    if (!in_obstacle && info_field.d_field != nullptr) {
       float field_val = info_field.sample(make_float2(px, py));
       cost -= lambda_info * field_val;
     }

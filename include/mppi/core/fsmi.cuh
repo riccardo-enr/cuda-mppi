@@ -578,12 +578,19 @@ struct InfoField
     float fx = (world_pos.x - origin.x) / res - 0.5f;
     float fy = (world_pos.y - origin.y) / res - 0.5f;
 
+    // Return 0 for queries outside the field — no reward beyond the
+    // computed extent. Clamping to edge cells caused boundary attraction.
+    if (fx < -0.5f || fx > (float)(Nx - 1) + 0.5f ||
+        fy < -0.5f || fy > (float)(Ny - 1) + 0.5f) {
+      return 0.0f;
+    }
+
     int x0 = (int)floorf(fx);
     int y0 = (int)floorf(fy);
     float sx = fx - (float)x0;
     float sy = fy - (float)y0;
 
-        // Clamp
+        // Clamp (for bilinear interpolation at valid edges)
     auto clamp = [] (int v, int lo, int hi) {
         return (v < lo) ? lo : ((v > hi) ? hi : v);
       };
