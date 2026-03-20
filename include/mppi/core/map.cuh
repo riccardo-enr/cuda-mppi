@@ -48,9 +48,9 @@ struct OccupancyGrid {
    * @return     Integer cell indices (may be out of bounds).
    */
   __device__ __host__ int3 world_to_grid(float3 pos) const {
-    int x = (int)((pos.x - origin.x) / resolution);
-    int y = (int)((pos.y - origin.y) / resolution);
-    int z = (int)((pos.z - origin.z) / resolution);
+    int x = (int)floorf((pos.x - origin.x) / resolution);
+    int y = (int)floorf((pos.y - origin.y) / resolution);
+    int z = (int)floorf((pos.z - origin.z) / resolution);
     return make_int3(x, y, z);
   }
 
@@ -123,8 +123,8 @@ struct OccupancyGrid2D {
    * @return     Integer cell indices (may be out of bounds).
    */
   __device__ __host__ int2 world_to_grid(float2 pos) const {
-    int x = (int)((pos.x - origin.x) / resolution);
-    int y = (int)((pos.y - origin.y) / resolution);
+    int x = (int)floorf((pos.x - origin.x) / resolution);
+    int y = (int)floorf((pos.y - origin.y) / resolution);
     return make_int2(x, y);
   }
 

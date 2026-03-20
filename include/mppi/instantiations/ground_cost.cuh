@@ -75,7 +75,7 @@ struct GroundCost
     // ramp proportional to occupancy — gives MPPI a gradient to steer away.
     int2 gi = grid.world_to_grid(make_float2(px, py));
     int idx = grid.get_index(gi.x, gi.y);
-    float p_occ = (idx >= 0) ? grid.data[idx] : 0.0f;
+    float p_occ = (idx >= 0) ? grid.data[idx] : 0.5f;
     bool in_obstacle = (p_occ >= occ_threshold);
     if (in_obstacle) {
       cost += collision_penalty;
@@ -106,19 +106,23 @@ struct GroundCost
     cost += goal_weight * min_goal_dist;
 
     // 4. Uniform-FSMI local information reward (theta directly from state)
-    // Suppressed in occupied cells — the info reward near obstacle boundaries
-    // can exceed the collision penalty, attracting the vehicle into walls.
-    if (!in_obstacle) {
+    // Fully suppressed in occupied cells. In the inflated zone (0 < p_occ <
+    // threshold), scale the reward down linearly — otherwise the MI near
+    // obstacle boundaries overwhelms the collision ramp and attracts the
+    // vehicle into walls.
+    float info_scale = in_obstacle ? 0.0f
+                     : (p_occ > 0.0f ? (1.0f - p_occ / occ_threshold) : 1.0f);
+    if (info_scale > 0.0f) {
       float info_gain = compute_uniform_fsmi_at_pose(
           grid, make_float2(px, py), theta, uniform_cfg);
-      cost -= lambda_local * info_gain;
+      cost -= lambda_local * info_scale * info_gain;
     }
 
     // 5. Info field lookup (strategic guidance)
-    // Suppressed in occupied cells — same rationale as layer 4.
-    if (!in_obstacle && info_field.d_field != nullptr) {
+    // Same proportional suppression as layer 4.
+    if (info_scale > 0.0f && info_field.d_field != nullptr) {
       float field_val = info_field.sample(make_float2(px, py));
-      cost -= lambda_info * field_val;
+      cost -= lambda_info * info_scale * field_val;
     }
 
     // 6. Action regularization
