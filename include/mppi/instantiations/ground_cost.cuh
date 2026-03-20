@@ -106,12 +106,12 @@ struct GroundCost
     cost += goal_weight * min_goal_dist;
 
     // 4. Uniform-FSMI local information reward (theta directly from state)
-    // Fully suppressed in occupied cells. In the inflated zone (0 < p_occ <
-    // threshold), scale the reward down linearly — otherwise the MI near
-    // obstacle boundaries overwhelms the collision ramp and attracts the
-    // vehicle into walls.
-    float info_scale = in_obstacle ? 0.0f
-                     : (p_occ > 0.0f ? (1.0f - p_occ / occ_threshold) : 1.0f);
+    // Suppressed in any cell with non-zero occupancy (obstacle OR inflated
+    // zone). After the free-cell fix, observed-free cells are 0.0 in the
+    // grid, so only truly free space gets info reward.  The linear scaling
+    // tried earlier was too weak — at the inflation boundary (p_occ=0.1),
+    // 80% of the info reward survived, nearly canceling the collision ramp.
+    float info_scale = (p_occ > 0.0f) ? 0.0f : 1.0f;
     if (info_scale > 0.0f) {
       float info_gain = compute_uniform_fsmi_at_pose(
           grid, make_float2(px, py), theta, uniform_cfg);
