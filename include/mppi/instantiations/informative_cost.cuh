@@ -95,6 +95,8 @@ struct InformativeCost
   /// @name Action regularisation
   /// @{
   float action_reg = 0.01f;          ///< $\ell_2$ penalty on control inputs.
+  float velocity_weight = 0.0f;      ///< $\ell_2$ penalty on velocity (layers vx,vy,vz).
+  float max_velocity = 5.0f;         ///< Velocity above which penalty applies (m/s).
   /// @}
 
   /// @name Workspace bounds (world coordinates)
@@ -136,11 +138,15 @@ struct InformativeCost
       if (p >= occ_threshold) {cost += collision_penalty;}
     }
 
-        // 2. Bounds cost
-    if (px < bound_x_min) {cost += collision_penalty;}
-    if (px > bound_x_max) {cost += collision_penalty;}
-    if (py < bound_y_min) {cost += collision_penalty;}
-    if (py > bound_y_max) {cost += collision_penalty;}
+        // 2. Bounds cost (soft barrier: quadratic outside, flat penalty at boundary)
+    {
+      float dx_lo = fmaxf(bound_x_min - px, 0.0f);
+      float dx_hi = fmaxf(px - bound_x_max, 0.0f);
+      float dy_lo = fmaxf(bound_y_min - py, 0.0f);
+      float dy_hi = fmaxf(py - bound_y_max, 0.0f);
+      float d2 = dx_lo * dx_lo + dx_hi * dx_hi + dy_lo * dy_lo + dy_hi * dy_hi;
+      if (d2 > 0.0f) {cost += collision_penalty * (1.0f + d2);}
+    }
 
         // 3. Height cost
     float dz = pz - target_altitude;
@@ -181,6 +187,16 @@ struct InformativeCost
         // 8. Action regularization
     for (int i = 0; i < 4; ++i) {
       cost += action_reg * u[i] * u[i];
+    }
+
+        // 9. Velocity penalty (soft speed limit)
+    if (velocity_weight > 0.0f) {
+      float vx = x[3], vy = x[4], vz = x[5];
+      float speed2 = vx * vx + vy * vy + vz * vz;
+      float v_max2 = max_velocity * max_velocity;
+      if (speed2 > v_max2) {
+        cost += velocity_weight * (speed2 - v_max2);
+      }
     }
 
     return cost;

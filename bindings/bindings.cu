@@ -161,6 +161,11 @@ struct PyQuadrotorIMPPI
     controller.set_reference_trajectory(u_ref);
   }
 
+  void set_nominal_control(const Eigen::VectorXf & u)
+  {
+    controller.set_nominal_control(u);
+  }
+
   void set_cost(const instantiations::InformativeCost & cost)
   {
     controller.set_cost(cost);
@@ -232,6 +237,13 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("num_support_pts", &MPPIConfig::num_support_pts)
   .def_rw("lambda_info", &MPPIConfig::lambda_info)
   .def_rw("alpha", &MPPIConfig::alpha)
+  .def("set_control_sigma", [] (MPPIConfig & self,
+    const std::vector<float> & sigma) {
+      for (size_t i = 0; i < sigma.size() && i < 12; ++i) {
+        self.control_sigma[i] = sigma[i];
+      }
+    }, nb::arg("sigma"),
+    "Set per-dimension noise std dev (up to 12 dims)")
   .def("__repr__", [] (const MPPIConfig & c) {
       return "MPPIConfig(K=" + std::to_string(c.num_samples) +
              ", T=" + std::to_string(c.horizon) +
@@ -339,6 +351,8 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("height_weight", &instantiations::InformativeCost::height_weight)
   .def_rw("target_altitude", &instantiations::InformativeCost::target_altitude)
   .def_rw("action_reg", &instantiations::InformativeCost::action_reg)
+  .def_rw("velocity_weight", &instantiations::InformativeCost::velocity_weight)
+  .def_rw("max_velocity", &instantiations::InformativeCost::max_velocity)
   .def_rw("occ_threshold", &instantiations::InformativeCost::occ_threshold)
   .def_rw("num_goals", &instantiations::InformativeCost::num_goals)
   .def_rw("bound_x_min", &instantiations::InformativeCost::bound_x_min)
@@ -369,6 +383,8 @@ NB_MODULE(cuda_mppi, m) {
              "Shift nominal trajectory forward")
   .def("set_reference_trajectory", &PyQuadrotorIMPPI::set_reference_trajectory,
              nb::arg("u_ref"), "Set control reference for biased sampling")
+  .def("set_nominal_control", &PyQuadrotorIMPPI::set_nominal_control,
+             nb::arg("u"), "Broadcast a control vector to all horizon steps")
   .def("set_position_reference", &PyQuadrotorIMPPI::set_position_reference,
              nb::arg("pos_ref_flat"), nb::arg("horizon"),
              "Upload position reference trajectory (horizon*3) to device")
