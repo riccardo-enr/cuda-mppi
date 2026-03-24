@@ -320,7 +320,13 @@ NB_MODULE(cuda_mppi, m) {
   .def(nb::init< >())
   .def_rw("mass", &instantiations::QuadrotorDynamics::mass)
   .def_rw("gravity", &instantiations::QuadrotorDynamics::gravity)
-  .def_rw("tau_omega", &instantiations::QuadrotorDynamics::tau_omega);
+  .def_rw("tau_omega", &instantiations::QuadrotorDynamics::tau_omega)
+  .def("step", [] (const instantiations::QuadrotorDynamics & dyn,
+    Eigen::VectorXf state, const Eigen::VectorXf & action, float dt) {
+      dyn.step_host(state, action, dt);
+      return state;
+    }, nb::arg("state"), nb::arg("action"), nb::arg("dt"),
+    "RK4 step on host (returns new state)");
 
     // 6. InformativeCost
     nb::class_<instantiations::InformativeCost>(m, "InformativeCost")
@@ -332,7 +338,20 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("collision_penalty", &instantiations::InformativeCost::collision_penalty)
   .def_rw("height_weight", &instantiations::InformativeCost::height_weight)
   .def_rw("target_altitude", &instantiations::InformativeCost::target_altitude)
-  .def_rw("action_reg", &instantiations::InformativeCost::action_reg);
+  .def_rw("action_reg", &instantiations::InformativeCost::action_reg)
+  .def_rw("occ_threshold", &instantiations::InformativeCost::occ_threshold)
+  .def_rw("num_goals", &instantiations::InformativeCost::num_goals)
+  .def_rw("bound_x_min", &instantiations::InformativeCost::bound_x_min)
+  .def_rw("bound_x_max", &instantiations::InformativeCost::bound_x_max)
+  .def_rw("bound_y_min", &instantiations::InformativeCost::bound_y_min)
+  .def_rw("bound_y_max", &instantiations::InformativeCost::bound_y_max)
+  .def("set_goal", [] (instantiations::InformativeCost & self,
+    int idx, float x, float y, float z) {
+      if (idx < 0 || idx >= instantiations::InformativeCost::MAX_GOALS)
+        throw std::out_of_range("Goal index out of range");
+      self.goals[idx] = make_float3(x, y, z);
+    }, nb::arg("idx"), nb::arg("x"), nb::arg("y"), nb::arg("z"),
+    "Set goal position at index (NED)");
 
     // 7. QuadrotorIMPPI (wrapper)
     nb::class_<PyQuadrotorIMPPI>(m, "QuadrotorIMPPI")
