@@ -200,9 +200,18 @@ NB_MODULE(cuda_mppi, m) {
     [] (MPPIConfig * self, int num_samples, int horizon, int nx, int nu,
     float lambda_, float dt, float u_scale, float w_action_seq_cost,
     int num_support_pts, float lambda_info, float alpha) {
-      new (self) MPPIConfig {num_samples, horizon, nx, nu,
-        lambda_, dt, u_scale, w_action_seq_cost,
-        num_support_pts, lambda_info, alpha};
+      auto c = new (self) MPPIConfig{};
+      c->num_samples = num_samples;
+      c->horizon = horizon;
+      c->nx = nx;
+      c->nu = nu;
+      c->lambda = lambda_;
+      c->dt = dt;
+      c->u_scale = u_scale;
+      c->w_action_seq_cost = w_action_seq_cost;
+      c->num_support_pts = num_support_pts;
+      c->lambda_info = lambda_info;
+      c->alpha = alpha;
              },
              nb::arg("num_samples"), nb::arg("horizon"),
              nb::arg("nx"), nb::arg("nu"),
