@@ -61,6 +61,8 @@ struct InformativeCost
   /// @name Map and information structures
   /// @{
   OccupancyGrid2D grid;         ///< 2D occupancy grid for obstacle/FSMI queries.
+  OccupancyGrid   grid_3d;      ///< 3D voxel grid for collision queries.
+  bool use_grid_3d = false;     ///< Use 3D grid for collision instead of 2D.
   InfoField info_field;          ///< Precomputed information potential field.
   UniformFSMIConfig uniform_cfg; ///< Configuration for local uniform-FSMI.
   /// @}
@@ -130,12 +132,17 @@ struct InformativeCost
     float cost = 0.0f;
     float px = x[0], py = x[1], pz = x[2];
 
-        // 1. Grid-based obstacle cost
-    int2 gi = grid.world_to_grid(make_float2(px, py));
-    int idx = grid.get_index(gi.x, gi.y);
-    if (idx >= 0) {
-      float p = grid.data[idx];
+        // 1. Grid-based obstacle cost (3D or 2D)
+    if (use_grid_3d) {
+      float p = grid_3d.get_probability(make_float3(px, py, pz));
       if (p >= occ_threshold) {cost += collision_penalty;}
+    } else {
+      int2 gi = grid.world_to_grid(make_float2(px, py));
+      int idx = grid.get_index(gi.x, gi.y);
+      if (idx >= 0) {
+        float p = grid.data[idx];
+        if (p >= occ_threshold) {cost += collision_penalty;}
+      }
     }
 
         // 2. Bounds cost (soft barrier: quadratic outside, flat penalty at boundary)

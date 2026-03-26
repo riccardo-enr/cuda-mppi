@@ -73,6 +73,51 @@ struct PyOccupancyGrid2D
 };
 
 // ---------------------------------------------------------------------------
+// Helper: manages OccupancyGrid (3D) with device memory from Python
+// ---------------------------------------------------------------------------
+struct PyOccupancyGrid3D
+{
+  OccupancyGrid grid;
+  float * d_data = nullptr;
+  int width = 0, height = 0, depth = 0;
+
+  PyOccupancyGrid3D(int w, int h, int d, float res, float ox, float oy, float oz)
+  : width(w), height(h), depth(d)
+  {
+    cudaMalloc(&d_data, (size_t)w * h * d * sizeof(float));
+    cudaMemset(d_data, 0, (size_t)w * h * d * sizeof(float));
+    grid.data = d_data;
+    grid.dims = make_int3(w, h, d);
+    grid.resolution = res;
+    grid.origin = make_float3(ox, oy, oz);
+  }
+
+  ~PyOccupancyGrid3D()
+  {
+    if (d_data) {cudaFree(d_data);}
+  }
+
+  void upload(const Eigen::VectorXf & data)
+  {
+    if (data.size() != (long long)width * height * depth) {
+      throw std::runtime_error("Data size mismatch: expected " +
+        std::to_string((long long)width * height * depth) +
+        ", got " + std::to_string(data.size()));
+    }
+    cudaMemcpy(d_data, data.data(), (size_t)width * height * depth * sizeof(float),
+                   cudaMemcpyHostToDevice);
+  }
+
+  Eigen::VectorXf download() const
+  {
+    Eigen::VectorXf out((long long)width * height * depth);
+    cudaMemcpy(out.data(), d_data, (size_t)width * height * depth * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+    return out;
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Helper: manages InfoField from Python
 // ---------------------------------------------------------------------------
 struct PyInfoField
@@ -175,6 +220,14 @@ struct PyQuadrotorIMPPI
   {
     auto & c = controller.cost();
     c.grid = py_grid.grid;
+    c.use_grid_3d = false;
+  }
+
+  void update_cost_grid_3d(PyOccupancyGrid3D & py_grid)
+  {
+    auto & c = controller.cost();
+    c.grid_3d = py_grid.grid;
+    c.use_grid_3d = true;
   }
 
   void update_cost_info_field(PyInfoField & py_field)
@@ -310,6 +363,20 @@ NB_MODULE(cuda_mppi, m) {
   .def_ro("width", &PyOccupancyGrid2D::width)
   .def_ro("height", &PyOccupancyGrid2D::height);
 
+    // 3b. OccupancyGrid3D (with device memory management)
+    nb::class_<PyOccupancyGrid3D>(m, "OccupancyGrid3D")
+  .def(nb::init<int, int, int, float, float, float, float>(),
+             nb::arg("width"), nb::arg("height"), nb::arg("depth"),
+             nb::arg("resolution"),
+             nb::arg("origin_x"), nb::arg("origin_y"), nb::arg("origin_z"))
+  .def("upload", &PyOccupancyGrid3D::upload, nb::arg("data"),
+             "Upload flat numpy array (W*H*D, z-major) to GPU")
+  .def("download", &PyOccupancyGrid3D::download,
+             "Download grid data to numpy")
+  .def_ro("width",  &PyOccupancyGrid3D::width)
+  .def_ro("height", &PyOccupancyGrid3D::height)
+  .def_ro("depth",  &PyOccupancyGrid3D::depth);
+
     // 4. InfoField
     nb::class_<PyInfoField>(m, "InfoField")
   .def(nb::init< >())
@@ -354,6 +421,7 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("velocity_weight", &instantiations::InformativeCost::velocity_weight)
   .def_rw("max_velocity", &instantiations::InformativeCost::max_velocity)
   .def_rw("occ_threshold", &instantiations::InformativeCost::occ_threshold)
+  .def_rw("use_grid_3d", &instantiations::InformativeCost::use_grid_3d)
   .def_rw("num_goals", &instantiations::InformativeCost::num_goals)
   .def_rw("bound_x_min", &instantiations::InformativeCost::bound_x_min)
   .def_rw("bound_x_max", &instantiations::InformativeCost::bound_x_max)
@@ -391,7 +459,9 @@ NB_MODULE(cuda_mppi, m) {
   .def("set_cost", &PyQuadrotorIMPPI::set_cost, nb::arg("cost"),
              "Replace the controller's cost function")
   .def("update_cost_grid", &PyQuadrotorIMPPI::update_cost_grid, nb::arg("grid"),
-             "Update the grid pointer in the controller's cost")
+             "Update the 2D grid pointer in the controller's cost (disables 3D)")
+  .def("update_cost_grid_3d", &PyQuadrotorIMPPI::update_cost_grid_3d, nb::arg("grid"),
+             "Update the 3D voxel grid pointer and enable 3D collision checking")
   .def("update_cost_info_field", &PyQuadrotorIMPPI::update_cost_info_field, nb::arg("info_field"),
              "Update the info field pointer in the controller's cost");
 
