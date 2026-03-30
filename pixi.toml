@@ -1,0 +1,8 @@
+[package]
+name = "cuda-mppi-cpp"
+version = "0.1.0"
+
+[tasks]
+configure = "cmake -B build -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX -DCMAKE_BUILD_TYPE=Release -DCUDA_MPPI_BUILD_TESTS=OFF -DCUDA_MPPI_BUILD_EXAMPLES=OFF"
+build = { cmd = "cmake --build build -j$(nproc)", depends-on = ["configure"] }
+install = { cmd = "cmake --install build", depends-on = ["build"] }

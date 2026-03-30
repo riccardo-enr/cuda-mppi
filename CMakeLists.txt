@@ -51,6 +51,26 @@ endif()
 
 install(DIRECTORY include/mppi DESTINATION include)
 
+# --- CMake package config for find_package(cuda_mppi) ---
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS cuda_mppi_lib EXPORT cuda_mppiTargets)
+
+configure_package_config_file(
+    cmake/cuda_mppiConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/cuda_mppiConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cuda_mppi
+)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cuda_mppiConfig.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cuda_mppi
+)
+install(EXPORT cuda_mppiTargets
+    FILE cuda_mppiTargets.cmake
+    NAMESPACE cuda_mppi::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cuda_mppi
+)
+
 # Cross-repo dependency (for tests/examples that use uav_control headers)
 set(UAV_CONTROL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include"
     CACHE PATH "Path to uav_control headers")

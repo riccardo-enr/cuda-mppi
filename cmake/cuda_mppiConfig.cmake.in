@@ -1,0 +1,5 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(Eigen3)
+find_dependency(CUDAToolkit)
+include("${CMAKE_CURRENT_LIST_DIR}/cuda_mppiTargets.cmake")
