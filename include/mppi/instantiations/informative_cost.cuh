@@ -13,8 +13,7 @@
  * | 4 | Reference trajectory track | `target_weight`    | +    |
  * | 5 | Uniform-FSMI local info    | `lambda_local`     | −    |
  * | 6 | Info field lookup          | `lambda_info`      | −    |
- * | 7 | Goal attraction (nearest)  | `goal_weight`      | +    |
- * | 8 | Action regularisation      | `action_reg`       | +    |
+ * | 7 | Action regularisation      | `action_reg`       | +    |
  */
 
 #ifndef MPPI_INFORMATIVE_COST_CUH
@@ -52,9 +51,6 @@ __device__ inline float quat_to_yaw(const float * q)
  * Designed for a 13D quadrotor state
  * $[p_x, p_y, p_z, v_x, v_y, v_z, q_w, q_x, q_y, q_z, \omega_x, \omega_y, \omega_z]$
  * with 4D control $[T, \omega_x, \omega_y, \omega_z]$.
- *
- * Supports up to `MAX_GOALS` viewpoints for multi-goal attraction
- * (nearest-viewpoint distance is used).
  */
 struct InformativeCost
 {
@@ -72,14 +68,6 @@ struct InformativeCost
   float lambda_info = 5.0f;     ///< Info field lookup weight (layer 6).
   float lambda_local = 10.0f;   ///< Uniform-FSMI weight (layer 5).
   float target_weight = 1.0f;   ///< Reference trajectory tracking (layer 4).
-  float goal_weight = 0.5f;     ///< Goal attraction weight (layer 7).
-  /// @}
-
-  /// @name Multi-goal support
-  /// @{
-  static constexpr int MAX_GOALS = 32;
-  float3 goals[MAX_GOALS] = {};  ///< Viewpoint goal positions (NED).
-  int num_goals = 1;             ///< Number of active goals.
   /// @}
 
   /// @name Obstacle / collision
@@ -182,21 +170,12 @@ struct InformativeCost
       cost -= lambda_info * field_val;
     }
 
-        // 7. Goal attraction (min distance to nearest viewpoint)
-    float min_goal_dist = 1e10f;
-    for (int g = 0; g < num_goals; ++g) {
-      float gx = px - goals[g].x, gy = py - goals[g].y, gz = pz - goals[g].z;
-      float d = sqrtf(gx * gx + gy * gy + gz * gz);
-      if (d < min_goal_dist) min_goal_dist = d;
-    }
-    cost += goal_weight * min_goal_dist;
-
-        // 8. Action regularization
+        // 7. Action regularization
     for (int i = 0; i < 4; ++i) {
       cost += action_reg * u[i] * u[i];
     }
 
-        // 9. Velocity penalty (soft speed limit)
+        // 8. Velocity penalty (soft speed limit)
     if (velocity_weight > 0.0f) {
       float vx = x[3], vy = x[4], vz = x[5];
       float speed2 = vx * vx + vy * vy + vz * vz;
@@ -212,27 +191,16 @@ struct InformativeCost
   /**
    * @brief Compute the terminal cost.
    *
-   * Strong goal attraction (nearest viewpoint) plus height penalty.
+   * Height penalty at the end of the horizon.
    *
    * @param x  Terminal state $\in \mathbb{R}^{13}$.
    * @return   Scalar terminal cost.
    */
   __device__ float terminal_cost(const float * x) const
   {
-    float px = x[0], py = x[1], pz = x[2];
-
-    float min_goal_dist = 1e10f;
-    for (int g = 0; g < num_goals; ++g) {
-      float gx = px - goals[g].x, gy = py - goals[g].y, gz = pz - goals[g].z;
-      float d = sqrtf(gx * gx + gy * gy + gz * gz);
-      if (d < min_goal_dist) min_goal_dist = d;
-    }
-    float goal_cost = 10.0f * min_goal_dist;
-
+    float pz = x[2];
     float dz = pz - target_altitude;
-    float h_cost = height_weight * dz * dz;
-
-    return goal_cost + h_cost;
+    return height_weight * dz * dz;
   }
 };
 

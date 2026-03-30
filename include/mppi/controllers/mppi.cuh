@@ -10,16 +10,21 @@
  * ## Algorithm
  *
  * Given a nominal control sequence $\mathbf{u}_{0:T-1}$, the controller:
- * 1. Samples $K$ perturbations $\boldsymbol{\epsilon}_k \sim \mathcal{N}(0, \boldsymbol{\Sigma})$
+ * 1. Samples $K$ perturbations $\boldsymbol{\epsilon}_k \sim \mathcal{N}(0,
+ * \boldsymbol{\Sigma})$
  * 2. Rolls out each perturbed trajectory and computes its cost $S_k$
- * 3. Computes importance weights $w_k = \frac{\exp(-S_k / \lambda)}{\sum_j \exp(-S_j / \lambda)}$
- * 4. Updates the nominal sequence: $\mathbf{u} \leftarrow \mathbf{u} + \alpha \sum_k w_k \boldsymbol{\epsilon}_k$
+ * 3. Computes importance weights $w_k = \frac{\exp(-S_k / \lambda)}{\sum_j
+ * \exp(-S_j / \lambda)}$
+ * 4. Updates the nominal sequence: $\mathbf{u} \leftarrow \mathbf{u} + \alpha
+ * \sum_k w_k \boldsymbol{\epsilon}_k$
  *
- * @tparam Dynamics  Callable dynamics model with `step()` method (GPU-compatible).
- * @tparam Cost      Callable cost function with `running_cost()` / `terminal_cost()`.
+ * @tparam Dynamics  Callable dynamics model with `step()` method
+ * (GPU-compatible).
+ * @tparam Cost      Callable cost function with `running_cost()` /
+ * `terminal_cost()`.
  *
- * @see Williams et al., "Information Theoretic MPC for Model-Based Reinforcement
- *      Learning", ICRA 2017.
+ * @see Williams et al., "Information Theoretic MPC for Model-Based
+ * Reinforcement Learning", ICRA 2017.
  */
 
 #ifndef MPPI_CONTROLLER_CUH
@@ -40,23 +45,28 @@
 namespace mppi {
 
 /**
- * @brief CUDA kernel for additive weighted update of the nominal control sequence.
+ * @brief CUDA kernel for additive weighted update of the nominal control
+ * sequence.
  *
  * Computes the single-iteration MPPI update:
  *
  * $$
- *   \mathbf{u}[i] \leftarrow \mathbf{u}[i] + \alpha \sum_{k=0}^{K-1} w_k \, \epsilon_k[i] \, \sigma_{i \bmod n_u}
+ *   \mathbf{u}[i] \leftarrow \mathbf{u}[i] + \alpha \sum_{k=0}^{K-1} w_k \,
+ * \epsilon_k[i] \, \sigma_{i \bmod n_u}
  * $$
  *
  * where $\epsilon_k$ is standard normal noise and $\sigma$ is the per-dimension
  * control standard deviation.
  *
- * @param[in,out] u_nom        Nominal control sequence on device $[T \times n_u]$.
- * @param[in]     noise        Sampled $\mathcal{N}(0,1)$ noise on device $[K \times T \times n_u]$.
+ * @param[in,out] u_nom        Nominal control sequence on device $[T \times
+ * n_u]$.
+ * @param[in]     noise        Sampled $\mathcal{N}(0,1)$ noise on device $[K
+ * \times T \times n_u]$.
  * @param[in]     weights      Softmax importance weights on device $[K]$.
  * @param[in]     K            Number of samples (rollouts).
  * @param[in]     total_params Total control parameters $(T \times n_u)$.
- * @param[in]     config       MPPI configuration (passed by value to GPU registers).
+ * @param[in]     config       MPPI configuration (passed by value to GPU
+ * registers).
  */
 __global__ void weighted_update_kernel(float* u_nom, const float* noise,
                                        const float* weights, int K,
@@ -64,24 +74,29 @@ __global__ void weighted_update_kernel(float* u_nom, const float* noise,
                                        MPPIConfig config);
 
 /**
- * @brief CUDA kernel for weighted mean replacement of the nominal control sequence.
+ * @brief CUDA kernel for weighted mean replacement of the nominal control
+ * sequence.
  *
  * Computes the multi-iteration mean replacement update:
  *
  * $$
- *   \mathbf{u}[i] \leftarrow \sum_{k=0}^{K-1} w_k \left( \mathbf{u}[i] + \epsilon_k[i] \, \sigma_{i \bmod n_u} \right)
+ *   \mathbf{u}[i] \leftarrow \sum_{k=0}^{K-1} w_k \left( \mathbf{u}[i] +
+ * \epsilon_k[i] \, \sigma_{i \bmod n_u} \right)
  * $$
  *
  * Unlike the additive update, this **replaces** the nominal with the weighted
  * mean of all sampled trajectories. Suitable for multi-iteration refinement
  * with decaying $\sigma$.
  *
- * @param[in,out] u_nom        Nominal control sequence on device $[T \times n_u]$.
- * @param[in]     noise        Sampled $\mathcal{N}(0,1)$ noise on device $[K \times T \times n_u]$.
+ * @param[in,out] u_nom        Nominal control sequence on device $[T \times
+ * n_u]$.
+ * @param[in]     noise        Sampled $\mathcal{N}(0,1)$ noise on device $[K
+ * \times T \times n_u]$.
  * @param[in]     weights      Softmax importance weights on device $[K]$.
  * @param[in]     K            Number of samples (rollouts).
  * @param[in]     total_params Total control parameters $(T \times n_u)$.
- * @param[in]     config       MPPI configuration (passed by value to GPU registers).
+ * @param[in]     config       MPPI configuration (passed by value to GPU
+ * registers).
  */
 __global__ void weighted_mean_kernel(float* u_nom, const float* noise,
                                      const float* weights, int K,
@@ -89,10 +104,12 @@ __global__ void weighted_mean_kernel(float* u_nom, const float* noise,
                                      MPPIConfig config);
 
 /**
- * @brief CUDA kernel that shifts the nominal control sequence forward by one timestep.
+ * @brief CUDA kernel that shifts the nominal control sequence forward by one
+ * timestep.
  *
  * Copies $\mathbf{u}[t+1]$ into $\mathbf{u}[t]$ for all timesteps.
- * The last timestep retains its previous value (warm-start) rather than being zeroed.
+ * The last timestep retains its previous value (warm-start) rather than being
+ * zeroed.
  *
  * @param[in,out] u_nom Nominal control sequence on device $[T \times n_u]$.
  * @param[in]     T     Prediction horizon length.
@@ -117,7 +134,8 @@ __global__ void shift_kernel(float* u_nom, int T, int nu);
  * ctrl.shift();                      // shift horizon for next timestep
  * ```
  *
- * @tparam Dynamics  Dynamics model providing `step(state, control) -> next_state`.
+ * @tparam Dynamics  Dynamics model providing `step(state, control) ->
+ * next_state`.
  * @tparam Cost      Cost function providing `running_cost(state, control)` and
  *                   `terminal_cost(state)`.
  */
@@ -131,7 +149,8 @@ class MPPIController {
    * $\mathbf{u} \in \mathbb{R}^{T \times n_u}$, noise samples, costs,
    * weights, and initializes the CuRAND pseudo-random generator.
    *
-   * @param config   MPPI hyperparameters (horizon, samples, $\lambda$, $\sigma$, etc.).
+   * @param config   MPPI hyperparameters (horizon, samples, $\lambda$,
+   * $\sigma$, etc.).
    * @param dynamics Dynamics model instance (copied to host member).
    * @param cost     Cost function instance (copied to host member).
    */
@@ -168,7 +187,8 @@ class MPPIController {
   }
 
   /**
-   * @brief Destructor. Frees all device memory and destroys the CuRAND generator.
+   * @brief Destructor. Frees all device memory and destroys the CuRAND
+   * generator.
    */
   ~MPPIController() {
     cudaFree(d_u_nom_);
@@ -190,7 +210,8 @@ class MPPIController {
   void set_dynamics(const Dynamics& dynamics) { dynamics_ = dynamics; }
   /** @brief Mutable access to the dynamics model. */
   Dynamics& dynamics() { return dynamics_; }
-  /** @brief Raw device pointer to the nominal control sequence $[T \times n_u]$. */
+  /** @brief Raw device pointer to the nominal control sequence $[T \times
+   * n_u]$. */
   float* get_u_nom_ptr() { return d_u_nom_; }
 
   /**
@@ -227,18 +248,18 @@ class MPPIController {
   /**
    * @brief Clear the reference bias. All samples will explore around u_nom.
    */
-  void clear_reference_sequence() {
-    has_ref_bias_ = false;
-  }
+  void clear_reference_sequence() { has_ref_bias_ = false; }
 
   /**
    * @brief Run the full MPPI optimization loop.
    *
    * Executes `num_iters` refinement iterations. Each iteration:
-   * 1. Samples $K$ noise vectors $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})$
+   * 1. Samples $K$ noise vectors $\boldsymbol{\epsilon} \sim \mathcal{N}(0,
+   * \mathbf{I})$
    * 2. Launches `rollout_kernel` to evaluate all $K$ trajectories in parallel
    * 3. Computes softmax importance weights on the host:
-   *    $w_k = \frac{\exp(-(S_k - S_{\min}) / \lambda)}{\sum_j \exp(-(S_j - S_{\min}) / \lambda)}$
+   *    $w_k = \frac{\exp(-(S_k - S_{\min}) / \lambda)}{\sum_j \exp(-(S_j -
+   * S_{\min}) / \lambda)}$
    * 4. Updates $\mathbf{u}$ via `weighted_update_kernel` (single iter) or
    *    `weighted_mean_kernel` (multi-iter with decaying $\sigma$)
    *
@@ -269,8 +290,8 @@ class MPPIController {
 
       // Sample N(0,1) noise
       HANDLE_CURAND_ERROR(curandGenerateNormal(
-          gen_, d_noise_,
-          config_.num_samples * config_.horizon * config_.nu, 0.0f, 1.0f));
+          gen_, d_noise_, config_.num_samples * config_.horizon * config_.nu,
+          0.0f, 1.0f));
 
       // Apply reference bias to alpha fraction of samples (split sampling)
       if (has_ref_bias_ && iter_config.alpha > 0.0f) {
@@ -279,8 +300,8 @@ class MPPIController {
         int start_biased_idx = iter_config.num_samples - num_biased;
         if (num_biased > 0) {
           dim3 bias_block(256);
-          dim3 bias_grid(
-              (iter_config.num_samples + bias_block.x - 1) / bias_block.x);
+          dim3 bias_grid((iter_config.num_samples + bias_block.x - 1) /
+                         bias_block.x);
           kernels::apply_bias_kernel<<<bias_grid, bias_block>>>(
               d_noise_, d_u_nom_, d_u_ref_, iter_config.num_samples,
               iter_config.horizon, iter_config.nu, start_biased_idx);
@@ -302,13 +323,11 @@ class MPPIController {
                               config_.num_samples * sizeof(float),
                               cudaMemcpyDeviceToHost));
 
-      const float min_cost =
-          *std::min_element(h_costs.begin(), h_costs.end());
+      const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
 
       float sum_weights = 0.0f;
       for (int k = 0; k < config_.num_samples; ++k) {
-        const float w =
-            expf(-(h_costs[k] - min_cost) / iter_config.lambda);
+        const float w = expf(-(h_costs[k] - min_cost) / iter_config.lambda);
         h_weights[k] = w;
         sum_weights += w;
       }
@@ -355,12 +374,14 @@ class MPPIController {
   }
 
   /**
-   * @brief Set every timestep of the nominal sequence to the same control value.
+   * @brief Set every timestep of the nominal sequence to the same control
+   * value.
    *
    * Useful for initializing the trajectory with a constant control
    * (e.g., hover thrust).
    *
-   * @param u Control vector $\in \mathbb{R}^{n_u}$ to broadcast across all $T$ steps.
+   * @param u Control vector $\in \mathbb{R}^{n_u}$ to broadcast across all $T$
+   * steps.
    */
   void set_nominal_control(const Eigen::VectorXf& u) {
     // Set each timestep to the same control value
@@ -387,9 +408,9 @@ class MPPIController {
   }
 
  protected:
-  MPPIConfig config_;   ///< MPPI hyperparameters.
-  Dynamics dynamics_;   ///< Dynamics model instance.
-  Cost cost_;           ///< Cost function instance.
+  MPPIConfig config_;  ///< MPPI hyperparameters.
+  Dynamics dynamics_;  ///< Dynamics model instance.
+  Cost cost_;          ///< Cost function instance.
 
   /// @name Device memory buffers
   /// @{
@@ -403,7 +424,7 @@ class MPPIController {
   bool has_ref_bias_ = false;  ///< Whether reference bias is active.
   /// @}
 
-  curandGenerator_t gen_;   ///< CuRAND pseudo-random number generator.
+  curandGenerator_t gen_;  ///< CuRAND pseudo-random number generator.
 };
 
 // Helper Kernels
@@ -435,8 +456,7 @@ __global__ void weighted_update_kernel(float* u_nom, const float* noise,
 // For multi-iteration refinement where we replace the mean each iteration.
 __global__ void weighted_mean_kernel(float* u_nom, const float* noise,
                                      const float* weights, int K,
-                                     int total_params,
-                                     MPPIConfig config) {
+                                     int total_params, MPPIConfig config) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= total_params) {
     return;

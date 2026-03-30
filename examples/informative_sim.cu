@@ -133,8 +133,6 @@ int main()
   cost.lambda_info = ifc.lambda_info;
   cost.lambda_local = ifc.lambda_local;
   cost.target_weight = ifc.target_weight;
-  cost.goal_weight = ifc.goal_weight;
-  cost.goal = make_float3(9.0f, 5.0f, -2.0f);
 
     // --- Controller ---
   IMPPIController<QuadrotorDynamics, InformativeCost> controller(mppi_cfg, dynamics, cost);

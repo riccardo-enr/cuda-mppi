@@ -118,7 +118,6 @@ struct InfoFieldConfig {
   float ref_speed = 2.0f;         ///< Reference speed for trajectory generation (m/s).
   int   ref_horizon = 40;         ///< Reference trajectory horizon (steps).
   float target_weight = 1.0f;     ///< Weight on reference trajectory tracking.
-  float goal_weight = 0.5f;       ///< Weight on goal attraction.
 };
 
 // ===========================================================================
