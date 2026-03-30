@@ -14,8 +14,10 @@
 // #include "mppi/controllers/kmppi.cuh"
 #include "mppi/controllers/jit_mppi.hpp"
 #include "mppi/instantiations/double_integrator.cuh"
+#include "mppi/instantiations/double_integrator_3d.cuh"
 #include "mppi/instantiations/quadrotor.cuh"
 #include "mppi/instantiations/informative_cost.cuh"
+#include "mppi/instantiations/informative_cost_3d.cuh"
 #include "mppi/planning/trajectory_generator.hpp"
 
 namespace nb = nanobind;
@@ -246,6 +248,93 @@ struct PyQuadrotorIMPPI
     }
     cudaMemcpy(d_ref_traj, pos_ref_flat.data(),
                    horizon * 3 * sizeof(float), cudaMemcpyHostToDevice);
+
+        // Wire into cost so Layer 4 sees the reference
+    auto c = controller.cost();
+    c.ref_trajectory = d_ref_traj;
+    c.ref_horizon = horizon;
+    controller.set_cost(c);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 3D Double-Integrator I-MPPI controller wrapper
+// ---------------------------------------------------------------------------
+using DI3IMPPI = IMPPIController<instantiations::DoubleIntegrator3D,
+    instantiations::InformativeCost3D>;
+
+struct PyDI3IMPPI
+{
+  DI3IMPPI controller;
+  float * d_ref_traj = nullptr;
+  int ref_horizon = 0;
+
+  PyDI3IMPPI(
+    const MPPIConfig & config,
+    const instantiations::DoubleIntegrator3D & dyn,
+    const instantiations::InformativeCost3D & cost)
+  : controller(config, dyn, cost)
+  {
+  }
+
+  ~PyDI3IMPPI()
+  {
+    if (d_ref_traj) {cudaFree(d_ref_traj);}
+  }
+
+  void compute(const Eigen::VectorXf & state) { controller.compute(state); }
+  Eigen::VectorXf get_action() { return controller.get_action(); }
+  void shift() { controller.shift(); }
+
+  void set_reference_trajectory(const Eigen::VectorXf & u_ref)
+  {
+    controller.set_reference_trajectory(u_ref);
+  }
+
+  void set_nominal_control(const Eigen::VectorXf & u)
+  {
+    controller.set_nominal_control(u);
+  }
+
+  void set_cost(const instantiations::InformativeCost3D & cost)
+  {
+    controller.set_cost(cost);
+  }
+
+  void update_cost_grid(PyOccupancyGrid2D & py_grid)
+  {
+    auto & c = controller.cost();
+    c.grid = py_grid.grid;
+    c.use_grid_3d = false;
+  }
+
+  void update_cost_grid_3d(PyOccupancyGrid3D & py_grid)
+  {
+    auto & c = controller.cost();
+    c.grid_3d = py_grid.grid;
+    c.use_grid_3d = true;
+  }
+
+  void update_cost_info_field(PyInfoField & py_field)
+  {
+    auto & c = controller.cost();
+    c.info_field = py_field.field;
+  }
+
+  void set_position_reference(const Eigen::VectorXf & pos_ref_flat, int horizon)
+  {
+    if (d_ref_traj == nullptr || ref_horizon != horizon) {
+      if (d_ref_traj) {cudaFree(d_ref_traj);}
+      cudaMalloc(&d_ref_traj, horizon * 3 * sizeof(float));
+      ref_horizon = horizon;
+    }
+    cudaMemcpy(d_ref_traj, pos_ref_flat.data(),
+                   horizon * 3 * sizeof(float), cudaMemcpyHostToDevice);
+
+    auto c = controller.cost();
+    c.ref_trajectory = d_ref_traj;
+    c.ref_horizon = horizon;
+    controller.set_cost(c);
   }
 };
 
@@ -413,7 +502,6 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("lambda_info", &instantiations::InformativeCost::lambda_info)
   .def_rw("lambda_local", &instantiations::InformativeCost::lambda_local)
   .def_rw("target_weight", &instantiations::InformativeCost::target_weight)
-  .def_rw("goal_weight", &instantiations::InformativeCost::goal_weight)
   .def_rw("collision_penalty", &instantiations::InformativeCost::collision_penalty)
   .def_rw("height_weight", &instantiations::InformativeCost::height_weight)
   .def_rw("target_altitude", &instantiations::InformativeCost::target_altitude)
@@ -422,18 +510,10 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("max_velocity", &instantiations::InformativeCost::max_velocity)
   .def_rw("occ_threshold", &instantiations::InformativeCost::occ_threshold)
   .def_rw("use_grid_3d", &instantiations::InformativeCost::use_grid_3d)
-  .def_rw("num_goals", &instantiations::InformativeCost::num_goals)
   .def_rw("bound_x_min", &instantiations::InformativeCost::bound_x_min)
   .def_rw("bound_x_max", &instantiations::InformativeCost::bound_x_max)
   .def_rw("bound_y_min", &instantiations::InformativeCost::bound_y_min)
-  .def_rw("bound_y_max", &instantiations::InformativeCost::bound_y_max)
-  .def("set_goal", [] (instantiations::InformativeCost & self,
-    int idx, float x, float y, float z) {
-      if (idx < 0 || idx >= instantiations::InformativeCost::MAX_GOALS)
-        throw std::out_of_range("Goal index out of range");
-      self.goals[idx] = make_float3(x, y, z);
-    }, nb::arg("idx"), nb::arg("x"), nb::arg("y"), nb::arg("z"),
-    "Set goal position at index (NED)");
+  .def_rw("bound_y_max", &instantiations::InformativeCost::bound_y_max);
 
     // 7. QuadrotorIMPPI (wrapper)
     nb::class_<PyQuadrotorIMPPI>(m, "QuadrotorIMPPI")
@@ -536,4 +616,61 @@ NB_MODULE(cuda_mppi, m) {
              nb::arg("ox"), nb::arg("oy"), nb::arg("res"),
              nb::arg("sx"), nb::arg("sy"),
              nb::arg("horizon"), nb::arg("speed"), nb::arg("dt"), nb::arg("alt"));
+
+    // ===================================================================
+    // 3D Double-Integrator I-MPPI (acceleration control)
+    // ===================================================================
+
+    // 9. DoubleIntegrator3D
+    nb::class_<instantiations::DoubleIntegrator3D>(m, "DoubleIntegrator3D")
+  .def(nb::init< >())
+  .def_rw("a_max", &instantiations::DoubleIntegrator3D::a_max)
+  .def("step", [] (const instantiations::DoubleIntegrator3D & dyn,
+    Eigen::VectorXf state, const Eigen::VectorXf & action, float dt) {
+      dyn.step_host(state, action, dt);
+      return state;
+    }, nb::arg("state"), nb::arg("action"), nb::arg("dt"),
+    "Euler step on host (returns new state)");
+
+    // 10. InformativeCost3D
+    nb::class_<instantiations::InformativeCost3D>(m, "InformativeCost3D")
+  .def(nb::init< >())
+  .def_rw("lambda_info", &instantiations::InformativeCost3D::lambda_info)
+  .def_rw("lambda_local", &instantiations::InformativeCost3D::lambda_local)
+  .def_rw("target_weight", &instantiations::InformativeCost3D::target_weight)
+  .def_rw("collision_penalty", &instantiations::InformativeCost3D::collision_penalty)
+  .def_rw("height_weight", &instantiations::InformativeCost3D::height_weight)
+  .def_rw("target_altitude", &instantiations::InformativeCost3D::target_altitude)
+  .def_rw("action_reg", &instantiations::InformativeCost3D::action_reg)
+  .def_rw("velocity_weight", &instantiations::InformativeCost3D::velocity_weight)
+  .def_rw("max_velocity", &instantiations::InformativeCost3D::max_velocity)
+  .def_rw("occ_threshold", &instantiations::InformativeCost3D::occ_threshold)
+  .def_rw("use_grid_3d", &instantiations::InformativeCost3D::use_grid_3d)
+  .def_rw("bound_x_min", &instantiations::InformativeCost3D::bound_x_min)
+  .def_rw("bound_x_max", &instantiations::InformativeCost3D::bound_x_max)
+  .def_rw("bound_y_min", &instantiations::InformativeCost3D::bound_y_min)
+  .def_rw("bound_y_max", &instantiations::InformativeCost3D::bound_y_max);
+
+    // 11. DI3IMPPI (3D Double-Integrator I-MPPI wrapper)
+    nb::class_<PyDI3IMPPI>(m, "DI3IMPPI")
+  .def(nb::init<const MPPIConfig &,
+    const instantiations::DoubleIntegrator3D &,
+    const instantiations::InformativeCost3D &>(),
+             nb::arg("config"),
+             nb::arg("dynamics") = instantiations::DoubleIntegrator3D(),
+             nb::arg("cost") = instantiations::InformativeCost3D())
+  .def("compute", &PyDI3IMPPI::compute, nb::arg("state"))
+  .def("get_action", &PyDI3IMPPI::get_action)
+  .def("shift", &PyDI3IMPPI::shift)
+  .def("set_reference_trajectory", &PyDI3IMPPI::set_reference_trajectory,
+             nb::arg("u_ref"), "Set control reference for biased sampling")
+  .def("set_nominal_control", &PyDI3IMPPI::set_nominal_control,
+             nb::arg("u"), "Broadcast a control vector to all horizon steps")
+  .def("set_position_reference", &PyDI3IMPPI::set_position_reference,
+             nb::arg("pos_ref_flat"), nb::arg("horizon"),
+             "Upload position reference trajectory (horizon*3) to device")
+  .def("set_cost", &PyDI3IMPPI::set_cost, nb::arg("cost"))
+  .def("update_cost_grid", &PyDI3IMPPI::update_cost_grid, nb::arg("grid"))
+  .def("update_cost_grid_3d", &PyDI3IMPPI::update_cost_grid_3d, nb::arg("grid"))
+  .def("update_cost_info_field", &PyDI3IMPPI::update_cost_info_field, nb::arg("info_field"));
 }
