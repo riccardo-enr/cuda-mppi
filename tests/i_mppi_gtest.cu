@@ -15,15 +15,16 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <Eigen/Dense>
 #include <cmath>
 #include <vector>
 
 #include "mppi/controllers/i_mppi.cuh"
+#include "mppi/core/fsmi.cuh"
+#include "mppi/core/map.cuh"
 #include "mppi/instantiations/double_integrator_3d.cuh"
 #include "mppi/instantiations/informative_cost_3d.cuh"
-#include "mppi/core/map.cuh"
-#include "mppi/core/fsmi.cuh"
 
 using namespace mppi;
 using namespace mppi::instantiations;
@@ -49,21 +50,21 @@ static Eigen::VectorXf make_state(float px = 0.f, float py = 0.f,
  */
 static MPPIConfig make_imppi_config() {
   MPPIConfig c{};
-  c.num_samples       = 512;
-  c.horizon           = 50;
-  c.nx                = DoubleIntegrator3D::STATE_DIM;   // 6
-  c.nu                = DoubleIntegrator3D::CONTROL_DIM;  // 3
-  c.lambda            = 1.0f;
-  c.dt                = 0.02f;
-  c.u_scale           = 1.0f;
-  c.learning_rate     = 1.0f;
+  c.num_samples = 512;
+  c.horizon = 50;
+  c.nx = DoubleIntegrator3D::STATE_DIM;    // 6
+  c.nu = DoubleIntegrator3D::CONTROL_DIM;  // 3
+  c.lambda = 1.0f;
+  c.dt = 0.02f;
+  c.u_scale = 1.0f;
+  c.learning_rate = 1.0f;
   c.w_action_seq_cost = 0.0f;
-  c.num_support_pts   = 10;
-  c.lambda_info       = 5.0f;
-  c.alpha             = 0.3f;
-  c.control_sigma[0]  = 2.0f;   // ax
-  c.control_sigma[1]  = 2.0f;   // ay
-  c.control_sigma[2]  = 2.0f;   // az
+  c.num_support_pts = 10;
+  c.lambda_info = 5.0f;
+  c.alpha = 0.3f;
+  c.control_sigma[0] = 2.0f;  // ax
+  c.control_sigma[1] = 2.0f;  // ay
+  c.control_sigma[2] = 2.0f;  // az
   return c;
 }
 
@@ -81,13 +82,15 @@ struct DeviceGrid2D {
     HANDLE_ERROR(cudaMalloc(&d_data, W * H * sizeof(float)));
     HANDLE_ERROR(cudaMemcpy(d_data, host.data(), W * H * sizeof(float),
                             cudaMemcpyHostToDevice));
-    grid.data       = d_data;
-    grid.dims       = make_int2(W, H);
+    grid.data = d_data;
+    grid.dims = make_int2(W, H);
     grid.resolution = res;
-    grid.origin     = make_float2(ox, oy);
+    grid.origin = make_float2(ox, oy);
   }
 
-  ~DeviceGrid2D() { if (d_data) cudaFree(d_data); }
+  ~DeviceGrid2D() {
+    if (d_data) cudaFree(d_data);
+  }
 
   void upload(const std::vector<float> &host) {
     HANDLE_ERROR(cudaMemcpy(d_data, host.data(), W * H * sizeof(float),
@@ -99,8 +102,7 @@ struct DeviceGrid2D {
     HANDLE_ERROR(cudaMemcpy(host.data(), d_data, W * H * sizeof(float),
                             cudaMemcpyDeviceToHost));
     for (int y = y0; y < y1; ++y)
-      for (int x = x0; x < x1; ++x)
-        host[y * W + x] = 1.0f;
+      for (int x = x0; x < x1; ++x) host[y * W + x] = 1.0f;
     upload(host);
   }
 
@@ -115,7 +117,9 @@ struct DeviceRefPos {
   float *d_ptr = nullptr;
 
   DeviceRefPos() = default;
-  ~DeviceRefPos() { if (d_ptr) cudaFree(d_ptr); }
+  ~DeviceRefPos() {
+    if (d_ptr) cudaFree(d_ptr);
+  }
 
   void set_constant(float px, float py, float pz, int horizon) {
     std::vector<float> flat(horizon * 3);
@@ -218,9 +222,9 @@ TEST(DoubleIntegrator3D_Test, StepHostMatchesStep) {
 
 TEST(OccupancyGrid2D, WorldToGridRoundTrip) {
   OccupancyGrid2D grid{};
-  grid.dims       = make_int2(100, 100);
+  grid.dims = make_int2(100, 100);
   grid.resolution = 0.1f;
-  grid.origin     = make_float2(-5.0f, -5.0f);
+  grid.origin = make_float2(-5.0f, -5.0f);
 
   float2 world = make_float2(2.3f, -1.7f);
   int2 cell = grid.world_to_grid(world);
@@ -232,9 +236,9 @@ TEST(OccupancyGrid2D, WorldToGridRoundTrip) {
 
 TEST(OccupancyGrid2D, IndexLinearisation) {
   OccupancyGrid2D grid{};
-  grid.dims       = make_int2(50, 30);
+  grid.dims = make_int2(50, 30);
   grid.resolution = 0.2f;
-  grid.origin     = make_float2(0.f, 0.f);
+  grid.origin = make_float2(0.f, 0.f);
 
   EXPECT_EQ(grid.get_index(0, 0), 0);
   EXPECT_EQ(grid.get_index(49, 0), 49);
@@ -251,9 +255,9 @@ TEST(OccupancyGrid2D, IndexLinearisation) {
 
 TEST(OccupancyGrid3D, WorldToGridRoundTrip) {
   OccupancyGrid grid{};
-  grid.dims       = make_int3(50, 50, 20);
+  grid.dims = make_int3(50, 50, 20);
   grid.resolution = 0.2f;
-  grid.origin     = make_float3(0.f, 0.f, -4.f);
+  grid.origin = make_float3(0.f, 0.f, -4.f);
 
   float3 world = make_float3(3.5f, 7.2f, -1.8f);
   int3 cell = grid.world_to_grid(world);
@@ -266,9 +270,9 @@ TEST(OccupancyGrid3D, WorldToGridRoundTrip) {
 
 TEST(OccupancyGrid3D, IndexLinearisation) {
   OccupancyGrid grid{};
-  grid.dims       = make_int3(10, 20, 5);
+  grid.dims = make_int3(10, 20, 5);
   grid.resolution = 0.5f;
-  grid.origin     = make_float3(0.f, 0.f, 0.f);
+  grid.origin = make_float3(0.f, 0.f, 0.f);
 
   EXPECT_EQ(grid.get_index(0, 0, 0), 0);
   EXPECT_EQ(grid.get_index(9, 0, 0), 9);
@@ -282,8 +286,8 @@ TEST(OccupancyGrid3D, IndexLinearisation) {
  * 3. InfoField
  * =================================================================== */
 
-__global__ void sample_info_field_kernel(
-    InfoField field, float2 pos, float *d_out) {
+__global__ void sample_info_field_kernel(InfoField field, float2 pos,
+                                         float *d_out) {
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     *d_out = field.sample(pos);
   }
@@ -317,8 +321,7 @@ TEST(InfoField, BilinearSampleInBounds) {
 
   std::vector<float> host(Nx * Ny);
   for (int j = 0; j < Ny; ++j)
-    for (int i = 0; i < Nx; ++i)
-      host[j * Nx + i] = (float)(i + j);
+    for (int i = 0; i < Nx; ++i) host[j * Nx + i] = (float)(i + j);
   cudaMemcpy(field.d_field, host.data(), Nx * Ny * sizeof(float),
              cudaMemcpyHostToDevice);
 
@@ -365,17 +368,16 @@ TEST(InfoField, OutOfBoundsReturnsZero) {
  * 4. InformativeCost3D — per-layer isolation
  * =================================================================== */
 
-__global__ void eval_cost3d_kernel(
-    InformativeCost3D cost, const float *x, const float *u, int t,
-    float *d_out) {
+__global__ void eval_cost3d_kernel(InformativeCost3D cost, const float *x,
+                                   const float *u, int t, float *d_out) {
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     float u_prev[3] = {};
     *d_out = cost.compute(x, u, u_prev, t);
   }
 }
 
-__global__ void eval_terminal3d_kernel(
-    InformativeCost3D cost, const float *x, float *d_out) {
+__global__ void eval_terminal3d_kernel(InformativeCost3D cost, const float *x,
+                                       float *d_out) {
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     *d_out = cost.terminal_cost(x);
   }
@@ -421,15 +423,15 @@ TEST(InformativeCost3D_Test, HeightCostOnly) {
   DeviceGrid2D dg(10, 10, 1.0f);
 
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
+  cost.grid = dg.grid;
   cost.collision_penalty = 0.0f;
-  cost.height_weight     = 10.0f;
-  cost.target_altitude   = -2.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 0.0f;
-  cost.action_reg        = 0.0f;
-  cost.velocity_weight   = 0.0f;
+  cost.height_weight = 10.0f;
+  cost.target_altitude = -2.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 0.0f;
+  cost.action_reg = 0.0f;
+  cost.velocity_weight = 0.0f;
 
   float x_ok[6] = {0, 0, -2, 0, 0, 0};
   float u[3] = {};
@@ -446,19 +448,19 @@ TEST(InformativeCost3D_Test, CollisionPenalty) {
   dg.upload(occ);
 
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
+  cost.grid = dg.grid;
   cost.collision_penalty = 500.0f;
-  cost.occ_threshold     = 0.7f;
-  cost.height_weight     = 0.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 0.0f;
-  cost.action_reg        = 0.0f;
-  cost.velocity_weight   = 0.0f;
-  cost.bound_x_min       = -100.f;
-  cost.bound_x_max       = 100.f;
-  cost.bound_y_min       = -100.f;
-  cost.bound_y_max       = 100.f;
+  cost.occ_threshold = 0.7f;
+  cost.height_weight = 0.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 0.0f;
+  cost.action_reg = 0.0f;
+  cost.velocity_weight = 0.0f;
+  cost.bound_x_min = -100.f;
+  cost.bound_x_max = 100.f;
+  cost.bound_y_min = -100.f;
+  cost.bound_y_max = 100.f;
 
   float x[6] = {5, 5, 0, 0, 0, 0};
   float u[3] = {};
@@ -469,24 +471,24 @@ TEST(InformativeCost3D_Test, BoundsPenalty) {
   DeviceGrid2D dg(10, 10, 1.0f);
 
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
+  cost.grid = dg.grid;
   cost.collision_penalty = 1000.0f;
-  cost.height_weight     = 0.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 0.0f;
-  cost.action_reg        = 0.0f;
-  cost.velocity_weight   = 0.0f;
-  cost.bound_x_min       = 0.0f;
-  cost.bound_x_max       = 10.0f;
-  cost.bound_y_min       = 0.0f;
-  cost.bound_y_max       = 10.0f;
+  cost.height_weight = 0.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 0.0f;
+  cost.action_reg = 0.0f;
+  cost.velocity_weight = 0.0f;
+  cost.bound_x_min = 0.0f;
+  cost.bound_x_max = 10.0f;
+  cost.bound_y_min = 0.0f;
+  cost.bound_y_max = 10.0f;
 
-  float x_in[6]  = {5, 5, 0, 0, 0, 0};
+  float x_in[6] = {5, 5, 0, 0, 0, 0};
   float x_out[6] = {-5, 5, 0, 0, 0, 0};
   float u[3] = {};
 
-  float c_in  = eval_cost(cost, x_in, u, 0);
+  float c_in = eval_cost(cost, x_in, u, 0);
   float c_out = eval_cost(cost, x_out, u, 0);
   EXPECT_GT(c_out, c_in + 500.f);
 }
@@ -495,19 +497,19 @@ TEST(InformativeCost3D_Test, ActionRegularisation) {
   DeviceGrid2D dg(10, 10, 1.0f);
 
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
+  cost.grid = dg.grid;
   cost.collision_penalty = 0.0f;
-  cost.height_weight     = 0.0f;
-  cost.target_altitude   = 0.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 0.0f;
-  cost.action_reg        = 1.0f;
-  cost.velocity_weight   = 0.0f;
-  cost.bound_x_min       = -100.f;
-  cost.bound_x_max       = 100.f;
-  cost.bound_y_min       = -100.f;
-  cost.bound_y_max       = 100.f;
+  cost.height_weight = 0.0f;
+  cost.target_altitude = 0.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 0.0f;
+  cost.action_reg = 1.0f;
+  cost.velocity_weight = 0.0f;
+  cost.bound_x_min = -100.f;
+  cost.bound_x_max = 100.f;
+  cost.bound_y_min = -100.f;
+  cost.bound_y_max = 100.f;
 
   float x[6] = {};
   float u_zero[3] = {};
@@ -522,10 +524,10 @@ TEST(InformativeCost3D_Test, TerminalCost) {
   DeviceGrid2D dg(10, 10, 1.0f);
 
   InformativeCost3D cost{};
-  cost.grid            = dg.grid;
-  cost.height_weight   = 5.0f;
+  cost.grid = dg.grid;
+  cost.height_weight = 5.0f;
   cost.target_altitude = -2.0f;
-  cost.target_weight   = 0.0f;
+  cost.target_weight = 0.0f;
 
   /* 2 m error → 5 * 4 = 20 */
   float x[6] = {0, 0, 0, 0, 0, 0};
@@ -539,21 +541,21 @@ TEST(InformativeCost3D_Test, RefTrajectoryTracking) {
   ref.set_constant(5.0f, 5.0f, -2.0f, 50);
 
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
+  cost.grid = dg.grid;
   cost.collision_penalty = 0.0f;
-  cost.height_weight     = 0.0f;
-  cost.target_altitude   = 0.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 10.0f;
-  cost.action_reg        = 0.0f;
-  cost.velocity_weight   = 0.0f;
-  cost.bound_x_min       = -100.f;
-  cost.bound_x_max       = 100.f;
-  cost.bound_y_min       = -100.f;
-  cost.bound_y_max       = 100.f;
-  cost.ref_trajectory    = ref.d_ptr;
-  cost.ref_horizon       = 50;
+  cost.height_weight = 0.0f;
+  cost.target_altitude = 0.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 10.0f;
+  cost.action_reg = 0.0f;
+  cost.velocity_weight = 0.0f;
+  cost.bound_x_min = -100.f;
+  cost.bound_x_max = 100.f;
+  cost.bound_y_min = -100.f;
+  cost.bound_y_max = 100.f;
+  cost.ref_trajectory = ref.d_ptr;
+  cost.ref_horizon = 50;
 
   float x_on[6] = {5, 5, -2, 0, 0, 0};
   float u[3] = {};
@@ -576,7 +578,8 @@ TEST(IMPPIController, Construction) {
   DeviceGrid2D dg(10, 10, 1.0f);
   cost.grid = dg.grid;
 
-  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn, cost);
+  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn,
+                                                              cost);
 }
 
 TEST(IMPPIController, SingleComputeFinite) {
@@ -585,16 +588,17 @@ TEST(IMPPIController, SingleComputeFinite) {
 
   DeviceGrid2D dg(100, 100, 0.1f);
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
+  cost.grid = dg.grid;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
   cost.collision_penalty = 0.0f;
-  cost.bound_x_min       = -100.f;
-  cost.bound_x_max       = 100.f;
-  cost.bound_y_min       = -100.f;
-  cost.bound_y_max       = 100.f;
+  cost.bound_x_min = -100.f;
+  cost.bound_x_max = 100.f;
+  cost.bound_y_min = -100.f;
+  cost.bound_y_max = 100.f;
 
-  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn, cost);
+  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn,
+                                                              cost);
 
   Eigen::VectorXf state = make_state();
   ctrl.compute(state);
@@ -615,7 +619,8 @@ TEST(IMPPIController, ReferenceTrajectoryUpload) {
   InformativeCost3D cost{};
   cost.grid = dg.grid;
 
-  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn, cost);
+  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn,
+                                                              cost);
 
   Eigen::VectorXf u_ref = Eigen::VectorXf::Ones(config.horizon * config.nu);
   ctrl.set_reference_trajectory(u_ref);
@@ -635,29 +640,30 @@ TEST(IMPPIController, ReferenceTrajectoryUpload) {
 TEST(IMPPIPipeline, AltitudeConvergence) {
   auto config = make_imppi_config();
   config.num_samples = 2048;
-  config.horizon     = 64;
-  config.lambda      = 0.5f;
+  config.horizon = 64;
+  config.lambda = 0.5f;
   DoubleIntegrator3D dyn;
   dyn.a_max = 5.0f;
 
   DeviceGrid2D dg(100, 100, 0.1f);
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
-  cost.height_weight     = 10.0f;
-  cost.target_altitude   = -2.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 0.0f;
+  cost.grid = dg.grid;
+  cost.height_weight = 10.0f;
+  cost.target_altitude = -2.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 0.0f;
   cost.collision_penalty = 0.0f;
-  cost.action_reg        = 0.5f;     // stronger regularisation to damp oscillations
-  cost.velocity_weight   = 2.0f;     // penalise high speed to prevent overshoot
-  cost.max_velocity      = 2.0f;
-  cost.bound_x_min       = -100.f;
-  cost.bound_x_max       = 100.f;
-  cost.bound_y_min       = -100.f;
-  cost.bound_y_max       = 100.f;
+  cost.action_reg = 0.5f;       // stronger regularisation to damp oscillations
+  cost.velocity_weight = 2.0f;  // penalise high speed to prevent overshoot
+  cost.max_velocity = 2.0f;
+  cost.bound_x_min = -100.f;
+  cost.bound_x_max = 100.f;
+  cost.bound_y_min = -100.f;
+  cost.bound_y_max = 100.f;
 
-  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn, cost);
+  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn,
+                                                              cost);
 
   /* Start 2 m below target altitude (pz = 0, target = -2). */
   Eigen::VectorXf state = make_state(0.f, 0.f, 0.f);
@@ -673,16 +679,15 @@ TEST(IMPPIPipeline, AltitudeConvergence) {
 
   float final_err = std::abs(state[2] - cost.target_altitude);
   EXPECT_LT(final_err, initial_err * 0.5f)
-      << "Initial err: " << initial_err
-      << ", final err: " << final_err
+      << "Initial err: " << initial_err << ", final err: " << final_err
       << ", final pz: " << state[2];
 }
 
 TEST(IMPPIPipeline, ObstacleAvoidance) {
   auto config = make_imppi_config();
   config.num_samples = 2048;
-  config.horizon     = 64;
-  config.lambda      = 0.5f;
+  config.horizon = 64;
+  config.lambda = 0.5f;
   DoubleIntegrator3D dyn;
   dyn.a_max = 5.0f;
 
@@ -692,27 +697,28 @@ TEST(IMPPIPipeline, ObstacleAvoidance) {
   dg.set_occupied(0, 80, W, 120);
 
   InformativeCost3D cost{};
-  cost.grid              = dg.grid;
+  cost.grid = dg.grid;
   cost.collision_penalty = 5000.0f;
-  cost.occ_threshold     = 0.7f;
-  cost.height_weight     = 0.0f;    // ignore height for this test
-  cost.target_altitude   = 0.0f;
-  cost.lambda_local      = 0.0f;
-  cost.lambda_info       = 0.0f;
-  cost.target_weight     = 0.0f;
-  cost.action_reg        = 0.1f;
-  cost.velocity_weight   = 2.0f;
-  cost.max_velocity      = 2.0f;
-  cost.bound_x_min       = -1.0f;
-  cost.bound_x_max       = 19.0f;
-  cost.bound_y_min       = -1.0f;
-  cost.bound_y_max       = 19.0f;
+  cost.occ_threshold = 0.7f;
+  cost.height_weight = 0.0f;  // ignore height for this test
+  cost.target_altitude = 0.0f;
+  cost.lambda_local = 0.0f;
+  cost.lambda_info = 0.0f;
+  cost.target_weight = 0.0f;
+  cost.action_reg = 0.1f;
+  cost.velocity_weight = 2.0f;
+  cost.max_velocity = 2.0f;
+  cost.bound_x_min = -1.0f;
+  cost.bound_x_max = 19.0f;
+  cost.bound_y_min = -1.0f;
+  cost.bound_y_max = 19.0f;
 
-  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn, cost);
+  IMPPIController<DoubleIntegrator3D, InformativeCost3D> ctrl(config, dyn,
+                                                              cost);
 
   /* Start at y=5, heading toward wall at y=8..12. Apply forward bias. */
   Eigen::VectorXf state = make_state(10.f, 5.f, 0.f);
-  state[4] = 1.5f;   // initial velocity toward wall
+  state[4] = 1.5f;  // initial velocity toward wall
 
   bool entered_wall = false;
   for (int t = 0; t < 200; ++t) {
@@ -729,6 +735,6 @@ TEST(IMPPIPipeline, ObstacleAvoidance) {
   }
 
   EXPECT_FALSE(entered_wall)
-      << "UAV entered obstacle region. Final pos: ("
-      << state[0] << ", " << state[1] << ", " << state[2] << ")";
+      << "UAV entered obstacle region. Final pos: (" << state[0] << ", "
+      << state[1] << ", " << state[2] << ")";
 }
