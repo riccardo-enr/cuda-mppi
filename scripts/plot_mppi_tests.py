@@ -14,7 +14,9 @@ PLOT_DIR = Path(__file__).parent.parent / "data" / "plots"
 def plot_di_convergence():
     """Plot DoubleIntegrator convergence for MPPI, SMPPI, KMPPI."""
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    fig.suptitle("DoubleIntegrator Convergence: MPPI vs SMPPI vs KMPPI", fontsize=14)
+    fig.suptitle(
+        "DoubleIntegrator Convergence: MPPI vs SMPPI vs KMPPI", fontsize=14
+    )
 
     colors = {"MPPI": "#1f77b4", "SMPPI": "#ff7f0e", "KMPPI": "#2ca02c"}
 
@@ -26,7 +28,9 @@ def plot_di_convergence():
         d = np.genfromtxt(f, delimiter=",", names=True)
 
         # XY trajectory
-        axes[0, 0].plot(d["px"], d["py"], "-", color=color, label=name, linewidth=1.5)
+        axes[0, 0].plot(
+            d["px"], d["py"], "-", color=color, label=name, linewidth=1.5
+        )
         axes[0, 0].plot(d["px"][0], d["py"][0], "o", color=color, ms=8)
 
         # Position norm vs time
@@ -87,7 +91,14 @@ def plot_3d_tracking(csv_name, title, has_ref=True):
     ax_xy.plot(d["px"][0], d["py"][0], "go", ms=10, label="Start")
     ax_xy.plot(d["px"][-1], d["py"][-1], "bs", ms=8, label="End")
     if has_ref:
-        ax_xy.plot(d["ref_px"], d["ref_py"], "r--", linewidth=1, alpha=0.6, label="Reference")
+        ax_xy.plot(
+            d["ref_px"],
+            d["ref_py"],
+            "r--",
+            linewidth=1,
+            alpha=0.6,
+            label="Reference",
+        )
         ax_xy.plot(d["ref_px"][-1], d["ref_py"][-1], "r*", ms=15, label="Goal")
     else:
         ax_xy.plot(0, 0, "r*", ms=15, label="Goal (origin)")
@@ -104,7 +115,14 @@ def plot_3d_tracking(csv_name, title, has_ref=True):
     ax_xz.plot(d["px"][0], d["pz"][0], "go", ms=10)
     ax_xz.plot(d["px"][-1], d["pz"][-1], "bs", ms=8)
     if has_ref:
-        ax_xz.plot(d["ref_px"], d["ref_pz"], "r--", linewidth=1, alpha=0.6, label="Reference")
+        ax_xz.plot(
+            d["ref_px"],
+            d["ref_pz"],
+            "r--",
+            linewidth=1,
+            alpha=0.6,
+            label="Reference",
+        )
         ax_xz.plot(d["ref_px"][-1], d["ref_pz"][-1], "r*", ms=15)
     else:
         ax_xz.plot(0, 0, "r*", ms=15)
@@ -121,10 +139,14 @@ def plot_3d_tracking(csv_name, title, has_ref=True):
     ax_pos.plot(d["t"], d["pz"], label="pz")
     if has_ref:
         ax_pos.plot(d["t"], d["ref_px"], "r--", alpha=0.5, label="ref_px")
-        ax_pos.plot(d["t"], d["ref_py"], "--", color="orange", alpha=0.5, label="ref_py")
+        ax_pos.plot(
+            d["t"], d["ref_py"], "--", color="orange", alpha=0.5, label="ref_py"
+        )
         ax_pos.plot(d["t"], d["ref_pz"], "g--", alpha=0.5, label="ref_pz")
     else:
-        ax_pos.axhline(0, color="r", linestyle="--", alpha=0.3, label="ref (origin)")
+        ax_pos.axhline(
+            0, color="r", linestyle="--", alpha=0.3, label="ref (origin)"
+        )
     ax_pos.set_xlabel("Time [s]")
     ax_pos.set_ylabel("Position [m]")
     ax_pos.set_title("Position vs Time")
@@ -156,11 +178,13 @@ def plot_3d_tracking(csv_name, title, has_ref=True):
     # Position error norm
     ax_err = axes[1, 2]
     if has_ref:
-        err = np.sqrt((d["px"] - d["ref_px"])**2 +
-                      (d["py"] - d["ref_py"])**2 +
-                      (d["pz"] - d["ref_pz"])**2)
+        err = np.sqrt(
+            (d["px"] - d["ref_px"]) ** 2
+            + (d["py"] - d["ref_py"]) ** 2
+            + (d["pz"] - d["ref_pz"]) ** 2
+        )
     else:
-        err = np.sqrt(d["px"]**2 + d["py"]**2 + d["pz"]**2)
+        err = np.sqrt(d["px"] ** 2 + d["py"] ** 2 + d["pz"] ** 2)
     ax_err.plot(d["t"], err, "b-", linewidth=1.5)
     ax_err.set_xlabel("Time [s]")
     ax_err.set_ylabel("||error|| [m]")
@@ -174,7 +198,9 @@ def plot_3d_tracking(csv_name, title, has_ref=True):
 
 def main():
     if not CSV_DIR.exists():
-        print(f"Error: {CSV_DIR} does not exist. Run mppi_log_trajectories first.")
+        print(
+            f"Error: {CSV_DIR} does not exist. Run mppi_log_trajectories first."
+        )
         sys.exit(1)
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -182,13 +208,17 @@ def main():
     plot_di_convergence()
 
     print("Plotting static point tracking...")
-    plot_3d_tracking("static_tracking", "Static Point Tracking — AccelerationTrackingCost")
+    plot_3d_tracking(
+        "static_tracking", "Static Point Tracking — AccelerationTrackingCost"
+    )
 
     print("Plotting waypoint sequence...")
     plot_3d_tracking("waypoint_sequence", "Waypoint Sequence Tracking — A→B")
 
     print("Plotting hover fallback...")
-    plot_3d_tracking("hover_fallback", "Hover at Origin (nullptr fallback)", has_ref=False)
+    plot_3d_tracking(
+        "hover_fallback", "Hover at Origin (nullptr fallback)", has_ref=False
+    )
 
     print(f"\nAll plots saved to {PLOT_DIR}/")
 

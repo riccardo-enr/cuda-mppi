@@ -97,7 +97,9 @@ def create_detailed_plot(info, std, area1, area2):
         )
 
     # Informative trajectory (the rest of it)
-    ax1.plot(info["x"], info["y"], "k-", alpha=0.3, label="Full Trajectory", zorder=5)
+    ax1.plot(
+        info["x"], info["y"], "k-", alpha=0.3, label="Full Trajectory", zorder=5
+    )
 
     # High-interest zones (Original map definition)
     rect1 = Rectangle(
@@ -124,9 +126,18 @@ def create_detailed_plot(info, std, area1, area2):
 
     # Wall (Vertical wall with opening)
     ax1.vlines(
-        5.0, 0, 4.0, colors="cyan", linestyles="-", linewidth=6, label="Wall", alpha=0.8
+        5.0,
+        0,
+        4.0,
+        colors="cyan",
+        linestyles="-",
+        linewidth=6,
+        label="Wall",
+        alpha=0.8,
     )
-    ax1.vlines(5.0, 6.0, 10.0, colors="cyan", linestyles="-", linewidth=6, alpha=0.8)
+    ax1.vlines(
+        5.0, 6.0, 10.0, colors="cyan", linestyles="-", linewidth=6, alpha=0.8
+    )
 
     # Start and goal
     ax1.scatter(
@@ -163,8 +174,12 @@ def create_detailed_plot(info, std, area1, area2):
     ax1.set_ylim(0, 10)
 
     plt.tight_layout()
-    plt.savefig("docs/_media/i_mppi/imppi_analysis.png", dpi=150, bbox_inches="tight")
-    print("\n✓ Interest region analysis saved to: docs/_media/i_mppi/imppi_analysis.png")
+    plt.savefig(
+        "docs/_media/i_mppi/imppi_analysis.png", dpi=150, bbox_inches="tight"
+    )
+    print(
+        "\n✓ Interest region analysis saved to: docs/_media/i_mppi/imppi_analysis.png"
+    )
 
     plt.show()
 
