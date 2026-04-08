@@ -88,16 +88,20 @@ struct InformativeCost3D
     float cost = 0.0f;
     float px = x[0], py = x[1], pz = x[2];
 
-    /* 1. Grid-based obstacle cost */
+    /* 1. Grid-based obstacle cost (continuous: scales with probability) */
     if (use_grid_3d) {
       float p = grid_3d.get_probability(make_float3(px, py, pz));
-      if (p >= occ_threshold) { cost += collision_penalty; }
+      if (p >= occ_threshold) {
+        cost += collision_penalty * (p / occ_threshold);
+      }
     } else {
       int2 gi = grid.world_to_grid(make_float2(px, py));
       int idx = grid.get_index(gi.x, gi.y);
       if (idx >= 0) {
         float p = grid.data[idx];
-        if (p >= occ_threshold) { cost += collision_penalty; }
+        if (p >= occ_threshold) {
+          cost += collision_penalty * (p / occ_threshold);
+        }
       }
     }
 
