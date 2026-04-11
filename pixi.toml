@@ -1,8 +1,27 @@
-[package]
-name = "cuda-mppi-cpp"
+[workspace]
+name = "cuda-mppi"
 version = "0.1.0"
+description = "CUDA-accelerated MPPI control"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+preview = ["pixi-build"]
+
+[dependencies]
+python = ">=3.12,<3.14"
+numpy = "*"
+matplotlib = ">=3.10"
+pandas = ">=2.0"
+pytest = "*"
+pip = "*"
+cmake = ">=3.18"
+eigen = ">=3.4"
+nanobind = ">=1.3.2"
+
+[pypi-dependencies]
+scienceplots = "*"
+scikit-build-core = ">=0.3.3"
 
 [tasks]
-configure = "cmake -B build -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX -DCMAKE_BUILD_TYPE=Release -DCUDA_MPPI_BUILD_TESTS=OFF -DCUDA_MPPI_BUILD_EXAMPLES=OFF"
-build = { cmd = "cmake --build build -j$(nproc)", depends-on = ["configure"] }
-install = { cmd = "cmake --install build", depends-on = ["build"] }
+install = "pip install --no-build-isolation -e ."
+test = { cmd = "pytest tests/ -v", env = { PYTHONPATH = "" } }
+tracking = { cmd = "python tests/test_quadrotor_tracking.py --plot", env = { PYTHONPATH = "" } }

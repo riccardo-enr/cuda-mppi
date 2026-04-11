@@ -55,6 +55,9 @@ preview = true
 requires = ["scikit-build-core>=0.3.3", "nanobind>=1.3.2"]
 build-backend = "scikit_build_core.build"
 
+[tool.pytest.ini_options]
+addopts = "-p no:launch-testing-ros -p no:launch-testing -p no:colcon-core -p no:ament-copyright -p no:ament-flake8 -p no:ament-pep257 -p no:ament-xmllint -p no:ament-lint"
+
 [tool.scikit-build]
 cmake.version = ">=3.18"
 wheel.expand-macos-universal-tags = true
