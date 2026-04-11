@@ -150,7 +150,7 @@ class IMPPIController : public MPPIController<Dynamics, Cost> {
     dim3 block(256);
     dim3 grid((this->config_.num_samples + block.x - 1) / block.x);
 
-    kernels::rollout_kernel<<<grid, block>>>(
+    kernels::imppi_rollout_kernel<<<grid, block>>>(
         this->dynamics_, this->cost_, this->config_, this->d_initial_state_,
         this->d_u_nom_, this->d_noise_, this->d_u_applied_, this->d_costs_);
     HANDLE_ERROR(cudaGetLastError());

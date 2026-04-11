@@ -18,7 +18,7 @@ namespace mppi {
 namespace kernels {
 
 /**
- * @brief Parallel trajectory rollout kernel.
+ * @brief Pure MPPI parallel trajectory rollout kernel.
  *
  * Thread $k$ simulates a full $T$-step trajectory starting from
  * `initial_state` and accumulates the total cost into `costs[k]`.
@@ -33,18 +33,6 @@ namespace kernels {
  *
  * A fraction `pure_noise_percentage` of samples use zero-mean noise
  * ($\mathbf{u}_k[t] = \boldsymbol{\epsilon}_k[t] \odot \boldsymbol{\sigma}$) for exploration.
- *
- * ## Importance sampling correction (I-MPPI)
- *
- * When $\alpha < 1$ the kernel adds a likelihood-ratio cost to correct
- * for the biased sampling distribution:
- *
- * $$
- *   S_k \mathrel{+}= \frac{\lambda (1 - \alpha)}{2} \sum_{t,i}
- *     \frac{m_{t,i} (m_{t,i} - 2 u_{k,t,i})}{\sigma_i^2}
- * $$
- *
- * where $m_{t,i} = u_{\text{nom}}[t,i]$.
  *
  * @tparam Dynamics  Model with `__device__ void step(x, u, x_next, dt)`.
  * @tparam Cost      Cost with `__device__ float compute(x, u, u_prev, t)`
@@ -72,7 +60,6 @@ __global__ void rollout_kernel(
     return;
   }
 
-  // Register-resident state and control buffers (max dimensions).
   constexpr int MAX_NX = 32;
   constexpr int MAX_NU = 12;
 
@@ -81,12 +68,9 @@ __global__ void rollout_kernel(
   float u_prev[MAX_NU];
   float x_next[MAX_NX];
 
-  // Copy initial state
   for (int i = 0; i < config.nx; ++i) {
     x[i] = initial_state[i];
   }
-
-  // Initialize u_prev from last applied control
   for (int i = 0; i < config.nu; ++i) {
     u_prev[i] = u_applied[i];
   }
@@ -94,7 +78,6 @@ __global__ void rollout_kernel(
   float total_cost = 0.0f;
 
   for (int t = 0; t < config.horizon; ++t) {
-    // Determine if this sample uses pure-noise exploration
     const bool pure_noise =
         config.pure_noise_percentage > 0.0f &&
         k >= static_cast<int>((1.0f - config.pure_noise_percentage) *
@@ -105,20 +88,95 @@ __global__ void rollout_kernel(
       float n_val = noise[noise_idx] * config.control_sigma[i];
 
       if (pure_noise) {
-        u[i] = n_val;  // Zero-mean exploration
+        u[i] = n_val;
       } else {
         u[i] = u_nom[t * config.nu + i] + n_val;
       }
     }
 
-    // Step dynamics: x_next = f(x, u)
     dynamics.step(x, u, x_next, config.dt);
-
-    // Running cost (includes rate-of-change via u_prev)
     total_cost += cost.compute(x, u, u_prev, t);
 
-    // Likelihood ratio cost (importance sampling correction for I-MPPI)
-    if (config.alpha < 1.0f) {
+    for (int i = 0; i < config.nu; ++i) {
+      u_prev[i] = u[i];
+    }
+    for (int i = 0; i < config.nx; ++i) {
+      x[i] = x_next[i];
+    }
+  }
+
+  total_cost += cost.terminal_cost(x);
+  costs[k] = total_cost;
+}
+
+/**
+ * @brief I-MPPI rollout kernel with importance-sampling correction.
+ *
+ * Identical to `rollout_kernel` but adds a likelihood-ratio cost term
+ * to correct for the biased sampling distribution used by I-MPPI:
+ *
+ * $$
+ *   S_k \mathrel{+}= \frac{\lambda (1 - \alpha)}{2} \sum_{t,i}
+ *     \frac{m_{t,i} (m_{t,i} - 2 u_{k,t,i})}{\sigma_i^2}
+ * $$
+ *
+ * where $m_{t,i} = u_{\text{nom}}[t,i]$ and $\alpha$ is the fraction
+ * of samples biased toward the informative reference trajectory.
+ *
+ * This kernel should only be used by `IMPPIController`.
+ */
+template <typename Dynamics, typename Cost>
+__global__ void imppi_rollout_kernel(
+    Dynamics dynamics, Cost cost, MPPIConfig config,
+    const float* __restrict__ initial_state,
+    const float* __restrict__ u_nom,
+    const float* __restrict__ noise,
+    const float* __restrict__ u_applied,
+    float* __restrict__ costs) {
+  int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k >= config.num_samples) {
+    return;
+  }
+
+  constexpr int MAX_NX = 32;
+  constexpr int MAX_NU = 12;
+
+  float x[MAX_NX];
+  float u[MAX_NU];
+  float u_prev[MAX_NU];
+  float x_next[MAX_NX];
+
+  for (int i = 0; i < config.nx; ++i) {
+    x[i] = initial_state[i];
+  }
+  for (int i = 0; i < config.nu; ++i) {
+    u_prev[i] = u_applied[i];
+  }
+
+  float total_cost = 0.0f;
+
+  for (int t = 0; t < config.horizon; ++t) {
+    const bool pure_noise =
+        config.pure_noise_percentage > 0.0f &&
+        k >= static_cast<int>((1.0f - config.pure_noise_percentage) *
+                              config.num_samples);
+
+    for (int i = 0; i < config.nu; ++i) {
+      int noise_idx = k * (config.horizon * config.nu) + t * config.nu + i;
+      float n_val = noise[noise_idx] * config.control_sigma[i];
+
+      if (pure_noise) {
+        u[i] = n_val;
+      } else {
+        u[i] = u_nom[t * config.nu + i] + n_val;
+      }
+    }
+
+    dynamics.step(x, u, x_next, config.dt);
+    total_cost += cost.compute(x, u, u_prev, t);
+
+    // Importance-sampling likelihood-ratio correction for biased sampling.
+    if (config.alpha > 0.0f && config.alpha < 1.0f) {
       float lr_cost = 0.0f;
       for (int i = 0; i < config.nu; ++i) {
         float m = u_nom[t * config.nu + i];
@@ -128,20 +186,15 @@ __global__ void rollout_kernel(
       total_cost += 0.5f * config.lambda * (1.0f - config.alpha) * lr_cost;
     }
 
-    // Shift u_prev for next timestep
     for (int i = 0; i < config.nu; ++i) {
       u_prev[i] = u[i];
     }
-
-    // Advance state
     for (int i = 0; i < config.nx; ++i) {
       x[i] = x_next[i];
     }
   }
 
-  // Terminal cost
   total_cost += cost.terminal_cost(x);
-
   costs[k] = total_cost;
 }
 
