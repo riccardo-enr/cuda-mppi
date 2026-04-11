@@ -144,6 +144,10 @@ def run_tracking(
         state_ref[:, 6] = 1.0                  # qw = 1 (level attitude)
         controller.set_state_reference(state_ref.flatten(), horizon)
 
+        # Feed back previous action for rate-of-change cost
+        if k > 0:
+            controller.set_applied_control(controls[k - 1])
+
         # Shift + compute
         controller.shift()
         t0 = time.perf_counter()
@@ -267,7 +271,18 @@ def _plot_results(t, pos, ref, ctrl, comp_t, rmse):
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Pytest entry point
+# ---------------------------------------------------------------------------
+
+
+def test_quadrotor_tracking():
+    """Verify MPPI tracks a lemniscate with RMSE < 2.0 m (short sim)."""
+    rmse = run_tracking(sim_time=5.0, plot=False)
+    assert rmse < 2.0, f"RMSE {rmse:.3f} m exceeds 2.0 m threshold"
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":

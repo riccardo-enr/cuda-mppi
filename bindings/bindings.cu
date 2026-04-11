@@ -198,6 +198,11 @@ struct PyQuadrotorMPPI
     controller.set_nominal_control(u);
   }
 
+  void set_applied_control(const Eigen::VectorXf & u)
+  {
+    controller.set_applied_control(u);
+  }
+
   void set_cost(const instantiations::TrackingCost & cost)
   {
     controller.set_cost(cost);
@@ -650,6 +655,8 @@ NB_MODULE(cuda_mppi, m) {
              "Shift nominal trajectory forward")
   .def("set_nominal_control", &PyQuadrotorMPPI::set_nominal_control,
              nb::arg("u"), "Broadcast a control vector to all horizon steps")
+  .def("set_applied_control", &PyQuadrotorMPPI::set_applied_control,
+             nb::arg("u"), "Set last applied control (for rate-of-change cost)")
   .def("set_cost", &PyQuadrotorMPPI::set_cost, nb::arg("cost"),
              "Replace the controller's cost function")
   .def("set_state_reference", &PyQuadrotorMPPI::set_state_reference,
