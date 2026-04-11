@@ -154,37 +154,10 @@ class IMPPIController : public MPPIController<Dynamics, Cost> {
         this->dynamics_, this->cost_, this->config_, this->d_initial_state_,
         this->d_u_nom_, this->d_noise_, this->d_u_applied_, this->d_costs_);
     HANDLE_ERROR(cudaGetLastError());
-    HANDLE_ERROR(cudaDeviceSynchronize());
 
-    // Softmax weights
-    std::vector<float> h_costs(this->config_.num_samples);
-    HANDLE_ERROR(cudaMemcpy(h_costs.data(), this->d_costs_,
-                            this->config_.num_samples * sizeof(float),
-                            cudaMemcpyDeviceToHost));
-
-    float min_cost = h_costs[0];
-    for (float c : h_costs) {
-      if (c < min_cost) {
-        min_cost = c;
-      }
-    }
-
-    std::vector<float> h_weights(this->config_.num_samples);
-    float sum_weights = 0.0f;
-    for (int k = 0; k < this->config_.num_samples; ++k) {
-      float w = expf(-(h_costs[k] - min_cost) / this->config_.lambda);
-      h_weights[k] = w;
-      sum_weights += w;
-    }
-
-    for (int k = 0; k < this->config_.num_samples; ++k) {
-      h_weights[k] /= sum_weights;
-    }
-
-    // Update u_nom
-    HANDLE_ERROR(cudaMemcpy(this->d_weights_, h_weights.data(),
-                            this->config_.num_samples * sizeof(float),
-                            cudaMemcpyHostToDevice));
+    /* Compute softmax weights on device (no PCIe round-trip). */
+    this->softmax_.compute(this->d_costs_, this->d_weights_,
+                           this->config_.lambda, this->config_.num_samples);
 
     int num_params = this->config_.horizon * this->config_.nu;
     int threads = 256;

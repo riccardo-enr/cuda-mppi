@@ -133,6 +133,7 @@ public:
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
 
     compute_interpolation_matrix();
+    softmax_.allocate(config.num_samples);
   }
 
   /** @brief Destructor. Frees all device buffers. */
@@ -149,6 +150,7 @@ public:
     cudaFree(d_weights_);
     cudaFree(d_u_applied_);
     curandDestroyGenerator(gen_);
+    softmax_.free();
   }
 
   /**
@@ -285,26 +287,8 @@ public:
       );
     HANDLE_ERROR(cudaGetLastError());
 
-    // Softmax weights
-    std::vector<float> h_costs(config_.num_samples);
-    HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_, config_.num_samples * sizeof(float),
-        cudaMemcpyDeviceToHost));
-
-    const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
-
-    std::vector<float> h_weights(config_.num_samples);
-    float sum_weights = 0.0f;
-    for(int k = 0; k < config_.num_samples; ++k) {
-      const float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
-      h_weights[k] = w;
-      sum_weights += w;
-    }
-    for(float& w : h_weights) {
-      w /= sum_weights;
-    }
-
-    HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(), config_.num_samples * sizeof(float),
-        cudaMemcpyHostToDevice));
+    /* Compute softmax weights on device (no PCIe round-trip). */
+    softmax_.compute(d_costs_, d_weights_, config_.lambda, config_.num_samples);
 
     int num_params = config_.num_support_pts * config_.nu;
     int blocks_upd = (num_params + 256 - 1) / 256;
@@ -367,6 +351,7 @@ private:
   float * d_weights_;         ///< Softmax importance weights $[K]$.
   float * d_u_applied_;       ///< Last applied control $[n_u]$.
   bool has_ref_bias_ = false; ///< Whether reference bias is active.
+  SoftmaxWeights softmax_;    ///< GPU-side softmax helper (CUB reductions).
 
   curandGenerator_t gen_;     ///< CuRAND generator.
 };

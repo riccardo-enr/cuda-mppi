@@ -34,12 +34,12 @@
 #include <curand.h>
 
 #include <Eigen/Dense>
-#include <algorithm>
 #include <cmath>
 #include <vector>
 
 #include "mppi/core/kernels.cuh"
 #include "mppi/core/mppi_common.cuh"
+#include "mppi/core/softmax.cuh"
 #include "mppi/utils/cuda_utils.cuh"
 
 namespace mppi {
@@ -184,6 +184,8 @@ class MPPIController {
     HANDLE_CURAND_ERROR(
         curandCreateGenerator(&gen_, CURAND_RNG_PSEUDO_DEFAULT));
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 1234ULL));
+
+    softmax_.allocate(config.num_samples);
   }
 
   /**
@@ -198,6 +200,7 @@ class MPPIController {
     cudaFree(d_weights_);
     cudaFree(d_u_applied_);
     curandDestroyGenerator(gen_);
+    softmax_.free();
   }
 
   /** @brief Replace the cost function instance. */
@@ -275,8 +278,6 @@ class MPPIController {
                             cudaMemcpyHostToDevice));
 
     const int num_iters = config_.num_iters > 0 ? config_.num_iters : 1;
-    std::vector<float> h_costs(config_.num_samples);
-    std::vector<float> h_weights(config_.num_samples);
 
     for (int iter = 0; iter < num_iters; ++iter) {
       // Build per-iteration config with decayed sigma
@@ -318,26 +319,9 @@ class MPPIController {
           d_u_applied_, d_costs_);
       HANDLE_ERROR(cudaGetLastError());
 
-      // Compute softmax weights on host
-      HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_,
-                              config_.num_samples * sizeof(float),
-                              cudaMemcpyDeviceToHost));
-
-      const float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
-
-      float sum_weights = 0.0f;
-      for (int k = 0; k < config_.num_samples; ++k) {
-        const float w = expf(-(h_costs[k] - min_cost) / iter_config.lambda);
-        h_weights[k] = w;
-        sum_weights += w;
-      }
-      for (float& w : h_weights) {
-        w /= sum_weights;
-      }
-
-      HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(),
-                              config_.num_samples * sizeof(float),
-                              cudaMemcpyHostToDevice));
+      /* Compute softmax weights on device (no PCIe round-trip). */
+      softmax_.compute(d_costs_, d_weights_, iter_config.lambda,
+                       config_.num_samples);
 
       int num_params = config_.horizon * config_.nu;
       int threads = 256;
@@ -355,8 +339,8 @@ class MPPIController {
             iter_config);
       }
       HANDLE_ERROR(cudaGetLastError());
-      HANDLE_ERROR(cudaDeviceSynchronize());
     }
+    HANDLE_ERROR(cudaDeviceSynchronize());
   }
 
   /**
@@ -422,6 +406,7 @@ class MPPIController {
   float* d_weights_;        ///< Softmax importance weights $[K]$.
   float* d_u_applied_;      ///< Last applied control $[n_u]$ (for rate cost).
   bool has_ref_bias_ = false;  ///< Whether reference bias is active.
+  SoftmaxWeights softmax_;  ///< GPU-side softmax helper (CUB reductions).
   /// @}
 
   curandGenerator_t gen_;  ///< CuRAND pseudo-random number generator.

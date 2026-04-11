@@ -45,6 +45,7 @@
 #include "mppi/core/kernels.cuh"
 #include "mppi/core/mppi_common.cuh"
 #include "mppi/core/bspline.cuh"
+#include "mppi/core/softmax.cuh"
 #include "mppi/utils/cuda_utils.cuh"
 
 namespace mppi {
@@ -301,6 +302,8 @@ public:
     // CuRAND
     HANDLE_CURAND_ERROR(curandCreateGenerator(&gen_, CURAND_RNG_PSEUDO_DEFAULT));
     HANDLE_CURAND_ERROR(curandSetPseudoRandomGeneratorSeed(gen_, 42ULL));
+
+    softmax_.allocate(config_.num_samples);
   }
 
   ~BSplineMPPIController()
@@ -317,6 +320,7 @@ public:
     cudaFree(d_initial_state_);
     cudaFree(d_u_applied_);
     curandDestroyGenerator(gen_);
+    softmax_.free();
   }
 
   // --- Accessors ---
@@ -448,26 +452,10 @@ public:
           d_initial_state_, d_u_expanded_, d_u_applied_,
           d_costs_);
       HANDLE_ERROR(cudaGetLastError());
-      HANDLE_ERROR(cudaDeviceSynchronize());
     }
 
-    // 7. Compute softmax weights (host)
-    std::vector<float> h_costs(config_.num_samples);
-    HANDLE_ERROR(cudaMemcpy(h_costs.data(), d_costs_,
-        config_.num_samples * sizeof(float), cudaMemcpyDeviceToHost));
-
-    float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
-    std::vector<float> h_weights(config_.num_samples);
-    float sum_weights = 0.0f;
-    for (int k = 0; k < config_.num_samples; ++k) {
-      float w = expf(-(h_costs[k] - min_cost) / config_.lambda);
-      h_weights[k] = w;
-      sum_weights += w;
-    }
-    for (float& w : h_weights) w /= sum_weights;
-
-    HANDLE_ERROR(cudaMemcpy(d_weights_, h_weights.data(),
-        config_.num_samples * sizeof(float), cudaMemcpyHostToDevice));
+    /* 7. Compute softmax weights on device (no PCIe round-trip). */
+    softmax_.compute(d_costs_, d_weights_, config_.lambda, config_.num_samples);
 
     // 8. Update control points via weighted CP noise
     {
@@ -535,6 +523,7 @@ private:
   float* d_initial_state_;  ///< Current state [nx].
   float* d_u_applied_;      ///< Last applied control [nu].
   bool has_cp_ref_ = false;
+  SoftmaxWeights softmax_;  ///< GPU-side softmax helper (CUB reductions).
 
   curandGenerator_t gen_;
 };
