@@ -18,6 +18,7 @@
 #include "mppi/instantiations/quadrotor.cuh"
 #include "mppi/instantiations/informative_cost.cuh"
 #include "mppi/instantiations/informative_cost_3d.cuh"
+#include "mppi/instantiations/tracking_cost.cuh"
 #include "mppi/planning/trajectory_generator.hpp"
 
 namespace nb = nanobind;
@@ -160,6 +161,64 @@ struct PyInfoField
   ~PyInfoField()
   {
     field.free();
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Quadrotor MPPI controller wrapper (trajectory tracking)
+// ---------------------------------------------------------------------------
+using QuadMPPI = MPPIController<instantiations::QuadrotorDynamics,
+    instantiations::TrackingCost>;
+
+struct PyQuadrotorMPPI
+{
+  QuadMPPI controller;
+  float * d_ref_traj = nullptr;
+  int ref_horizon = 0;
+
+  PyQuadrotorMPPI(
+    const MPPIConfig & config,
+    const instantiations::QuadrotorDynamics & dyn,
+    const instantiations::TrackingCost & cost)
+  : controller(config, dyn, cost)
+  {
+  }
+
+  ~PyQuadrotorMPPI()
+  {
+    if (d_ref_traj) {cudaFree(d_ref_traj);}
+  }
+
+  void compute(const Eigen::VectorXf & state) { controller.compute(state); }
+  Eigen::VectorXf get_action() { return controller.get_action(); }
+  void shift() { controller.shift(); }
+
+  void set_nominal_control(const Eigen::VectorXf & u)
+  {
+    controller.set_nominal_control(u);
+  }
+
+  void set_cost(const instantiations::TrackingCost & cost)
+  {
+    controller.set_cost(cost);
+  }
+
+  void set_state_reference(const Eigen::VectorXf & ref_flat, int horizon)
+  {
+    /* Upload full state reference (horizon × 13) to device. */
+    int required = horizon * 13;
+    if (d_ref_traj == nullptr || ref_horizon != horizon) {
+      if (d_ref_traj) {cudaFree(d_ref_traj);}
+      cudaMalloc(&d_ref_traj, required * sizeof(float));
+      ref_horizon = horizon;
+    }
+    cudaMemcpy(d_ref_traj, ref_flat.data(),
+                   required * sizeof(float), cudaMemcpyHostToDevice);
+
+    auto c = controller.cost();
+    c.ref_trajectory = d_ref_traj;
+    c.ref_horizon = horizon;
+    controller.set_cost(c);
   }
 };
 
@@ -544,6 +603,58 @@ NB_MODULE(cuda_mppi, m) {
              "Update the 3D voxel grid pointer and enable 3D collision checking")
   .def("update_cost_info_field", &PyQuadrotorIMPPI::update_cost_info_field, nb::arg("info_field"),
              "Update the info field pointer in the controller's cost");
+
+    // 7b. TrackingCost
+    nb::class_<instantiations::TrackingCost>(m, "TrackingCost")
+  .def(nb::init< >())
+  .def_rw("Q_quat", &instantiations::TrackingCost::Q_quat)
+  .def_rw("terminal_weight", &instantiations::TrackingCost::terminal_weight)
+  .def("set_Q_pos", [] (instantiations::TrackingCost & self,
+    const std::vector<float> & v) {
+      for (size_t i = 0; i < 3 && i < v.size(); ++i) self.Q_pos[i] = v[i];
+    }, nb::arg("weights"), "Set position tracking weights [3]")
+  .def("set_Q_vel", [] (instantiations::TrackingCost & self,
+    const std::vector<float> & v) {
+      for (size_t i = 0; i < 3 && i < v.size(); ++i) self.Q_vel[i] = v[i];
+    }, nb::arg("weights"), "Set velocity tracking weights [3]")
+  .def("set_Q_omega", [] (instantiations::TrackingCost & self,
+    const std::vector<float> & v) {
+      for (size_t i = 0; i < 3 && i < v.size(); ++i) self.Q_omega[i] = v[i];
+    }, nb::arg("weights"), "Set angular rate tracking weights [3]")
+  .def("set_R", [] (instantiations::TrackingCost & self,
+    const std::vector<float> & v) {
+      for (size_t i = 0; i < 4 && i < v.size(); ++i) self.R[i] = v[i];
+    }, nb::arg("weights"), "Set control cost weights [4]")
+  .def("set_R_delta", [] (instantiations::TrackingCost & self,
+    const std::vector<float> & v) {
+      for (size_t i = 0; i < 4 && i < v.size(); ++i) self.R_delta[i] = v[i];
+    }, nb::arg("weights"), "Set control rate cost weights [4]")
+  .def("set_hover_pos", [] (instantiations::TrackingCost & self,
+    const std::vector<float> & v) {
+      for (size_t i = 0; i < 3 && i < v.size(); ++i) self.hover_pos[i] = v[i];
+    }, nb::arg("pos"), "Set default hover position [3] (NED)");
+
+    // 7c. QuadrotorMPPI (trajectory tracking wrapper)
+    nb::class_<PyQuadrotorMPPI>(m, "QuadrotorMPPI")
+  .def(nb::init<const MPPIConfig &,
+    const instantiations::QuadrotorDynamics &,
+    const instantiations::TrackingCost &>(),
+             nb::arg("config"),
+             nb::arg("dynamics") = instantiations::QuadrotorDynamics(),
+             nb::arg("cost") = instantiations::TrackingCost())
+  .def("compute", &PyQuadrotorMPPI::compute, nb::arg("state"),
+             "Run one MPPI iteration")
+  .def("get_action", &PyQuadrotorMPPI::get_action,
+             "Get first control from nominal trajectory")
+  .def("shift", &PyQuadrotorMPPI::shift,
+             "Shift nominal trajectory forward")
+  .def("set_nominal_control", &PyQuadrotorMPPI::set_nominal_control,
+             nb::arg("u"), "Broadcast a control vector to all horizon steps")
+  .def("set_cost", &PyQuadrotorMPPI::set_cost, nb::arg("cost"),
+             "Replace the controller's cost function")
+  .def("set_state_reference", &PyQuadrotorMPPI::set_state_reference,
+             nb::arg("ref_flat"), nb::arg("horizon"),
+             "Upload full state reference (horizon*13) to device");
 
     // 8. TrajectoryGenerator
     using TG = planning::TrajectoryGenerator;
