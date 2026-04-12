@@ -122,8 +122,8 @@ public:
     HANDLE_ERROR(cudaMalloc(&d_u_vel_, config.horizon * config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMalloc(&d_action_seq_, config.horizon * config.nu * sizeof(float)));
     /* curandGenerateNormal requires an even element count. */
-    int noise_count_ = config.num_samples * config.horizon * config.nu;
-    noise_count_ += (noise_count_ & 1);
+    size_t noise_count_ = static_cast<size_t>(config.num_samples) * config.horizon * config.nu;
+    noise_count_ += (noise_count_ & 1u);
     HANDLE_ERROR(cudaMalloc(&d_noise_vel_, noise_count_ * sizeof(float)));
     HANDLE_ERROR(cudaMalloc(&d_perturbed_actions_,
         config.num_samples * config.horizon * config.nu * sizeof(float)));
@@ -224,8 +224,8 @@ public:
     HANDLE_ERROR(cudaMemcpy(d_initial_state_, state.data(), config_.nx * sizeof(float),
         cudaMemcpyHostToDevice));
 
-    int noise_n = config_.num_samples * config_.horizon * config_.nu;
-    noise_n += (noise_n & 1);
+    size_t noise_n = static_cast<size_t>(config_.num_samples) * config_.horizon * config_.nu;
+    noise_n += (noise_n & 1u);
     HANDLE_CURAND_ERROR(curandGenerateNormal(gen_, d_noise_vel_, noise_n, 0.0f, 1.0f));
 
     dim3 block(256);

@@ -127,8 +127,8 @@ class IMPPIController : public MPPIController<Dynamics, Cost> {
                             this->config_.nx * sizeof(float),
                             cudaMemcpyHostToDevice));
 
-    int noise_n = this->config_.num_samples * this->config_.horizon * this->config_.nu;
-    noise_n += (noise_n & 1);
+    size_t noise_n = static_cast<size_t>(this->config_.num_samples) * this->config_.horizon * this->config_.nu;
+    noise_n += (noise_n & 1u);
     HANDLE_CURAND_ERROR(curandGenerateNormal(this->gen_, this->d_noise_, noise_n, 0.0f, 1.0f));
 
     // Apply bias to alpha fraction of samples
