@@ -317,6 +317,16 @@ public:
       );
   }
 
+  /**
+   * @brief Shift the nominal control sequence forward by one timestep.
+   */
+  void shift() {
+    const int total_floats = config_.horizon * config_.nu;
+    const int threads = 256;
+    const int blocks = (total_floats + threads - 1) / threads;
+    shift_kernel<<<blocks, threads>>>(d_u_nom_, config_.horizon, config_.nu);
+  }
+
   /** @brief Upload the last applied control (for rate cost). */
   void set_applied_control(const Eigen::VectorXf& u) {
     HANDLE_ERROR(cudaMemcpy(d_u_applied_, u.data(),
@@ -334,6 +344,33 @@ public:
     HANDLE_ERROR(cudaMemcpy(action.data(), d_u_nom_, config_.nu * sizeof(float),
         cudaMemcpyDeviceToHost));
     return action;
+  }
+
+  /** @brief Get the current cost function (by value). */
+  Cost cost() const { return cost_; }
+
+  /** @brief Replace the cost function. */
+  void set_cost(const Cost & c) { cost_ = c; }
+
+  /**
+   * @brief Set nominal control by broadcasting a single vector across the horizon.
+   *
+   * Also zero-initialises support points $\boldsymbol{\theta}$.
+   *
+   * @param u  Control vector $[n_u]$.
+   */
+  void set_nominal_control(const Eigen::VectorXf & u)
+  {
+    std::vector<float> flat(config_.horizon * config_.nu);
+    for (int t = 0; t < config_.horizon; ++t) {
+      for (int i = 0; i < config_.nu; ++i) {
+        flat[t * config_.nu + i] = u[i];
+      }
+    }
+    HANDLE_ERROR(cudaMemcpy(d_u_nom_, flat.data(),
+        flat.size() * sizeof(float), cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMemset(d_theta_, 0,
+        config_.num_support_pts * config_.nu * sizeof(float)));
   }
 
 private:
