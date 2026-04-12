@@ -160,8 +160,10 @@ class MPPIController {
     // Allocate device memory
     HANDLE_ERROR(
         cudaMalloc(&d_u_nom_, config.horizon * config.nu * sizeof(float)));
-    HANDLE_ERROR(cudaMalloc(&d_noise_, config.num_samples * config.horizon *
-                                           config.nu * sizeof(float)));
+    /* curandGenerateNormal requires an even element count. */
+    int noise_count_ = config.num_samples * config.horizon * config.nu;
+    noise_count_ += (noise_count_ & 1);
+    HANDLE_ERROR(cudaMalloc(&d_noise_, noise_count_ * sizeof(float)));
     HANDLE_ERROR(cudaMalloc(&d_costs_, config.num_samples * sizeof(float)));
     HANDLE_ERROR(cudaMalloc(&d_initial_state_, config.nx * sizeof(float)));
     HANDLE_ERROR(cudaMalloc(&d_weights_, config.num_samples * sizeof(float)));
@@ -290,9 +292,9 @@ class MPPIController {
       }
 
       // Sample N(0,1) noise
-      HANDLE_CURAND_ERROR(curandGenerateNormal(
-          gen_, d_noise_, config_.num_samples * config_.horizon * config_.nu,
-          0.0f, 1.0f));
+      int noise_n = config_.num_samples * config_.horizon * config_.nu;
+      noise_n += (noise_n & 1);
+      HANDLE_CURAND_ERROR(curandGenerateNormal(gen_, d_noise_, noise_n, 0.0f, 1.0f));
 
       // Apply reference bias to alpha fraction of samples (split sampling)
       if (has_ref_bias_ && iter_config.alpha > 0.0f) {
