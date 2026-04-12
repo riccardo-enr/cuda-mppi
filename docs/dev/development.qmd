@@ -2,58 +2,92 @@
 title: "Development Guide"
 ---
 
-# Contribution Workflow
+# Workflow
 
-1.  **Fork & Clone**: Fork the repository and clone it locally.
-2.  **Branch**: Create a feature branch (e.g., `feat/new-dynamics`).
-3.  **Implement**: Add your code (see below for adding dynamics).
-4.  **Test**: Run existing tests and add new ones.
-5.  **PR**: Submit a Pull Request.
+1. **Branch**: `feat/…`, `fix/…`, `chore/…` — include the issue number (e.g. `feat/42-new-planner`).
+2. **Implement**: follow conventions below.
+3. **Test**: run all applicable test suites (see checklist).
+4. **PR**: fill out the PR template and paste test output.
 
-# Testing
+Every task should have a GitHub issue. Reference it in commits (`fixes #42`) and in the PR body (`Closes #42`).
 
-We use a combination of C++ standalone executables and Python scripts.
+# Environment
 
-## C++ Tests
-
-Located in `src/`. Built via CMake.
+The recommended environment uses **Pixi**. All dependencies (CUDA headers, Eigen, nanobind, pytest) are pinned in `pixi.toml`.
 
 ```bash
-cd build
-cmake ..
-make
-./pendulum_test
+pixi run install   # build & install Python bindings
+pixi run test      # pytest tests/ -v
+pixi run tracking  # quadrotor lemniscate tracking with plot
 ```
 
-## Python Tests
-
-Located in `tests/`. Run with `pytest`.
+For a standalone C++ build:
 
 ```bash
-pytest tests/
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ```
 
-# Adding New Dynamics
+# Test checklist
 
-To add a new hardcoded system (non-JIT):
+Before closing a GitHub issue, run **all applicable** suites:
 
-1.  **Create Header**: Create `include/mppi/instantiations/my_system.cuh`.
-2.  **Define Struct**:
-    ```cpp
-    struct MySystem {
-        static constexpr int STATE_DIM = ...;
-        static constexpr int CONTROL_DIM = ...;
-        
-        __device__ void step(const float* x, const float* u, float* x_next, float dt) const {
-            // Implementation
-        }
-    };
-    ```
-3.  **Create Test**: Add `src/my_system_test.cu` to verify it.
-4.  **Bind (Optional)**: Update `bindings/bindings.cu` to expose `MPPIController<MySystem, Cost>` to Python.
+## Trajectory tracking controllers
 
-# Coding Conventions
+```bash
+pixi run tracking
+```
 
-*   **CUDA**: Use `__device__` for core logic. Avoid `malloc` in kernels.
-*   **Style**: Follow standard C++17 modern practices.
-*   **Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/).
+* Automated assert: RMSE < 2.0 m (regression guard).
+* Paper baseline: ~0.69 m — report the actual value in the closing comment.
+
+## Core kernel / config
+
+```bash
+./build/tests/mppi_gtest      # must report [  PASSED  ]
+./build/tests/i_mppi_gtest    # must report [  PASSED  ]
+./build/tests/pendulum_test   # prints PASSED
+./build/tests/bspline_test    # prints PASSED
+./build/tests/fsmi_unit_test  # prints PASSED
+```
+
+## FSMI / occupancy grid
+
+```bash
+./build/tests/fsmi_unit_test
+```
+
+## Python bindings
+
+```bash
+pixi run install
+pixi run test
+```
+
+# Adding new dynamics
+
+1. Create `include/mppi/instantiations/my_system.cuh`.
+2. Define the struct:
+
+```cpp
+struct MySystem {
+    static constexpr int STATE_DIM   = …;
+    static constexpr int CONTROL_DIM = …;
+
+    /* Called once per GPU thread, inside the rollout loop. */
+    __device__ void step(
+        const float* x, const float* u, float* x_next, float dt
+    ) const { … }
+};
+```
+
+3. Add a GTest in `tests/my_system_gtest.cu` and register it in `tests/CMakeLists.txt`.
+4. Optionally expose via nanobind in `bindings/bindings.cu`.
+
+# Coding conventions
+
+* **CUDA**: `__device__` for rollout-path code. No `malloc`/`new` inside kernels.
+* **Error handling**: wrap all `cudaMalloc`, `cudaMemcpy`, `curandGenerate*` calls with `HANDLE_ERROR(...)`.
+* **Sync**: call `cudaDeviceSynchronize()` after every kernel launch whose result is read on the host.
+* **Comments**: use codedoc-style block comments (`/* … */`) for prose; `//` for short inline notes.
+* **Commits**: [Conventional Commits](https://www.conventionalcommits.org/) — `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `chore`.

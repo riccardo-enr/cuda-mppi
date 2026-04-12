@@ -4,57 +4,114 @@ title: "Getting Started"
 
 # Prerequisites
 
-To build and use `cuda-mppi`, you need the following dependencies:
-
-*   **Operating System**: Linux (Ubuntu 20.04+ recommended)
-*   **CUDA Toolkit**: Version 11.0 or higher
-*   **CMake**: Version 3.18 or higher
-*   **C++ Compiler**: GCC 9+ or Clang 10+ (supporting C++17)
-*   **Python**: Version 3.8+ (for bindings)
+*   **OS**: Linux (Ubuntu 20.04+)
+*   **CUDA Toolkit**: 11.0 or higher (11.8+ recommended)
+*   **CMake**: 3.18+
+*   **C++ compiler**: GCC 9+ / Clang 10+ (C++17)
+*   **Pixi**: recommended package manager — [pixi.sh](https://pixi.sh)
 
 # Installation
 
-## 1. Standalone C++ Build
+## Python bindings (recommended)
 
-If you want to use the library purely as a C++ dependency or run the provided tests:
+The fastest path to a working environment uses [Pixi](https://pixi.sh), which
+pins all native and Python dependencies (Eigen, nanobind, CMake, CUDA headers)
+through a conda-forge lock file.
 
 ```bash
-# Clone the repository
 git clone https://github.com/riccardo-enr/cuda-mppi.git
 cd cuda-mppi
 
-# Create build directory
-mkdir build && cd build
-
-# Configure and Build
-cmake ..
-make -j$(nproc)
+# Build and install the Python extension into the pixi environment
+pixi run install
 ```
 
-## 2. Python Bindings (via jax_mppi)
+`pixi run install` runs `pip install --no-build-isolation -e .` inside the
+managed environment. The extension is rebuilt from source via
+**scikit-build-core** and placed in the active Python prefix — no manual CMake
+invocation needed.
 
-This library is primarily designed to be the backend for the [jax_mppi](https://github.com/riccardo-enr/jax_mppi) project. However, you can build the bindings locally:
+Verify the installation:
 
 ```bash
-# Install dependencies
-pip install nanobind scikit-build-core numpy
-
-# Build and install in editable mode
-pip install -e .
+pixi run python -c "import cuda_mppi; print(cuda_mppi.MPPIConfig)"
 ```
 
-# Verification
+## Standalone C++ build
 
-To verify the installation, you can run the provided C++ tests:
+Use this if you want to run the C++/CUDA tests or use the library as a CMake
+dependency without Python.
 
 ```bash
-cd build
-./pendulum_test
-./i_mppi_test
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ```
 
-Or test the Python bindings:
+CMake options:
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `CUDA_MPPI_BUILD_TESTS` | `ON` | Build GTest suites and standalone test binaries |
+| `CUDA_MPPI_BUILD_EXAMPLES` | `OFF` | Build simulation examples |
+| `CMAKE_CUDA_ARCHITECTURES` | `75;86;89` | Target GPU architectures |
+
+# Running the tests
+
+## Python tests
 
 ```bash
-python -c "import cuda_mppi; print(cuda_mppi.MPPIConfig(100, 50, 4, 2, 0.1, 0.05, 1.0, 0.0, 0))"
+pixi run test        # pytest tests/ -v
+pixi run tracking    # quadrotor lemniscate tracking with plot
+```
+
+`pixi run tracking` runs `tests/test_tracking_comparison.py` and prints the
+RMSE for each controller variant. Expected baselines:
+
+| Controller | RMSE (m) | Compute (mean) |
+|------------|----------|----------------|
+| MPPI       | ~0.60    | ~0.17 ms       |
+| K-MPPI     | ~0.79    | ~0.03 ms       |
+| S-MPPI     | skipped  | — (see [issue #24](https://github.com/riccardo-enr/cuda-mppi/issues/24)) |
+
+## C++ / CUDA tests
+
+```bash
+# GTest suites — must report [  PASSED  ]
+./build/tests/mppi_gtest
+./build/tests/i_mppi_gtest
+
+# Standalone verification scripts — print PASSED on success
+./build/tests/pendulum_test
+./build/tests/bspline_test
+./build/tests/fsmi_unit_test
+```
+
+# Quick Python example
+
+```python
+import numpy as np
+import cuda_mppi
+
+# --- dynamics & cost ---
+dyn  = cuda_mppi.QuadrotorDynamics()
+dyn.mass = 2.0; dyn.gravity = 9.81; dyn.tau_omega = 0.05
+
+cost = cuda_mppi.TrackingCost()
+cost.set_Q_pos([5e3, 5e3, 5e3])
+cost.set_Q_vel([4e1, 4e1, 4e1])
+cost.set_R([2e-2, 2e-1, 2e-1, 2e-1])
+
+# --- controller ---
+cfg = cuda_mppi.MPPIConfig(
+    num_samples=900, horizon=40, nx=13, nu=4, lambda_=1000.0, dt=0.02
+)
+cfg.set_control_sigma([2.0, 0.5, 0.5, 0.3])
+ctrl = cuda_mppi.QuadrotorMPPI(cfg, dyn, cost)
+
+# --- one control step ---
+state = np.zeros(13, dtype=np.float32)
+state[6] = 1.0  # unit quaternion (hover)
+ctrl.compute(state)
+action = ctrl.get_action()
+print("Action:", action)   # [thrust, roll_rate, pitch_rate, yaw_rate]
 ```

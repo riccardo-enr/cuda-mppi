@@ -16,8 +16,19 @@ This repository is currently in active development. It **should not** be used fo
 
 *   **Speed**: Pure CUDA implementation capable of evaluating thousands of trajectories in parallel at hundreds of Hz.
 *   **Flexibility**: Template-based architecture allows for zero-overhead swapping of Dynamics and Cost functions.
-*   **JIT Compilation**: Define your system model in Python/C++ strings and compile optimized kernels at runtime using NVRTC.
-*   **Variants**: Includes Standard MPPI, Smooth MPPI (SMPPI), Kernel MPPI (KMPPI), and Informative MPPI (I-MPPI).
+*   **Multiple variants**: Standard MPPI, Smooth MPPI (S-MPPI), Kernel MPPI (K-MPPI), B-Spline MPPI, and Informative MPPI (I-MPPI) — all exposed to Python.
+*   **JIT Compilation**: Define dynamics and cost in C++/CUDA strings; the library compiles a `.cubin` at runtime via NVRTC.
+*   **Pixi environment**: reproducible builds pinned through a conda-forge lock file.
+
+## Performance snapshot
+
+Lemniscate tracking, 30 s, K=900 rollouts, N=40, dt=0.02 s:
+
+| Controller | RMSE (m) | Compute / step |
+|------------|----------|----------------|
+| MPPI       | 0.60     | 0.17 ms        |
+| K-MPPI     | 0.79     | 0.03 ms        |
+| S-MPPI     | — (⚠️ [#24](https://github.com/riccardo-enr/cuda-mppi/issues/24)) | — |
 
 ## Documentation Structure
 

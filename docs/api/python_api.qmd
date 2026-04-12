@@ -4,78 +4,234 @@ title: "Python API Reference"
 
 # Module: `cuda_mppi`
 
-The `cuda_mppi` module provides Python bindings for the core CUDA controllers.
+Install via:
+
+```bash
+pixi run install    # recommended
+# or: pip install --no-build-isolation -e .
+```
+
+---
 
 ## Configuration
 
 ### `MPPIConfig`
 
-The configuration struct for all controllers.
+Shared configuration struct passed to every controller.
 
 ```python
-class MPPIConfig:
-    def __init__(self, 
-                 num_samples: int, 
-                 horizon: int, 
-                 nx: int, 
-                 nu: int, 
-                 lambda_: float, 
-                 dt: float, 
-                 u_scale: float, 
-                 w_action_seq_cost: float, 
-                 num_support_pts: int):
-        ...
+cfg = cuda_mppi.MPPIConfig(
+    num_samples=900,   # K: parallel rollouts
+    horizon=40,        # T: timesteps per rollout
+    nx=13,             # state dimension
+    nu=4,              # control dimension
+    lambda_=1000.0,    # temperature (inverse sensitivity)
+    dt=0.02,           # integration timestep (s)
+)
+cfg.set_control_sigma([2.0, 0.5, 0.5, 0.3])  # per-channel noise std
+cfg.num_support_pts = 10    # K-MPPI: number of RBF support points
+cfg.w_action_seq_cost = 1.0 # S-MPPI: smoothness cost weight
 ```
 
-*   `num_samples` ($K$): Number of parallel rollouts.
-*   `horizon` ($T$): Number of timesteps per rollout.
-*   `nx`: State dimension.
-*   `nu`: Control dimension.
-*   `lambda_`: Temperature parameter (inverse sensitivity).
-*   `dt`: Integration timestep (seconds).
-*   `u_scale`: Scaling factor for control inputs (or noise variance).
-*   `w_action_seq_cost`: Weight for smoothness cost (SMPPI).
-*   `num_support_pts`: Number of knots for kernel approximation (KMPPI).
+---
+
+## Dynamics
+
+### `QuadrotorDynamics`
+
+13-DOF quadrotor in NED/FRD frame. State: `[x, y, z, vx, vy, vz, qw, qx, qy, qz, ωx, ωy, ωz]`.
+Control: `[thrust, roll_rate, pitch_rate, yaw_rate]`.
+
+```python
+dyn = cuda_mppi.QuadrotorDynamics()
+dyn.mass      = 2.0    # kg
+dyn.gravity   = 9.81   # m/s²
+dyn.tau_omega = 0.05   # body-rate time constant (s)
+
+x_next = dyn.step(state, action, dt)  # host-side RK4 step
+```
+
+### `DoubleIntegrator` / `DoubleIntegrator3D`
+
+```python
+di = cuda_mppi.DoubleIntegrator()    # 4-DOF: [x, y, vx, vy], control: [ax, ay]
+di3 = cuda_mppi.DoubleIntegrator3D() # 6-DOF: [x, y, z, vx, vy, vz], control: [ax, ay, az]
+```
+
+---
+
+## Costs
+
+### `TrackingCost`
+
+Quadratic reference-tracking cost for the quadrotor.
+
+```python
+cost = cuda_mppi.TrackingCost()
+cost.set_Q_pos([5e3, 5e3, 5e3])              # position weights
+cost.set_Q_vel([4e1, 4e1, 4e1])              # velocity weights
+cost.Q_quat = 2e1                             # quaternion attitude weight
+cost.set_Q_omega([2e1, 2e1, 2e1])            # angular rate weights
+cost.set_R([2e-2, 2e-1, 2e-1, 2e-1])        # control effort weights
+cost.set_R_delta([1e-3, 1e-2, 1e-2, 1e-2])  # control rate weights
+cost.terminal_weight = 10.0
+cost.set_hover_pos([0.0, 0.0, -2.5])         # hover fallback position (NED)
+```
+
+### `InformativeCost`
+
+Multi-objective cost combining tracking, information gain (FSMI), and
+collision avoidance.
+
+```python
+cost = cuda_mppi.InformativeCost()
+cost.lambda_info       = 1.0
+cost.lambda_local      = 1.0
+cost.collision_penalty = 100.0
+cost.target_weight     = 10.0
+cost.use_grid_3d       = False
+cost.bound_x_min = -10.0; cost.bound_x_max = 10.0
+cost.bound_y_min = -10.0; cost.bound_y_max = 10.0
+```
+
+---
+
+## Occupancy Grids
+
+### `OccupancyGrid2D`
+
+```python
+grid = cuda_mppi.OccupancyGrid2D(
+    width=200, height=200, resolution=0.1,
+    origin_x=-10.0, origin_y=-10.0
+)
+grid.upload(np_array)                              # float32 (height, width)
+grid.update_fov(x, y, yaw, fov_range, fov_angle)  # ray-cast sensor update
+arr = grid.download()
+```
+
+### `OccupancyGrid3D`
+
+```python
+grid = cuda_mppi.OccupancyGrid3D(
+    width=100, height=100, depth=50, resolution=0.2,
+    origin_x=-10.0, origin_y=-10.0, origin_z=0.0
+)
+grid.upload(np_array)   # float32 (depth, height, width)
+arr = grid.download()
+```
+
+### `InfoField`
+
+GPU-accelerated FSMI information field.
+
+```python
+field = cuda_mppi.InfoField(
+    Nx=200, Ny=200, resolution=0.1, origin_x=-10.0, origin_y=-10.0
+)
+field.compute(grid, uav_x, uav_y, sensor_range, sensor_fov)
+info_map = field.download()   # float32 (Ny, Nx)
+```
+
+---
 
 ## Controllers
 
-### `DoubleIntegratorMPPI`
+All controllers share a common interface:
 
-A specialized controller for a 4D double integrator system ($x, y, v_x, v_y$).
+| Method | Description |
+|--------|-------------|
+| `compute(state)` | Run $K$ GPU rollouts and compute optimal action |
+| `get_action()` | Return first action of the optimal sequence |
+| `shift()` | Shift nominal sequence forward by one step |
+| `set_nominal_control(u)` | Broadcast a control vector across the full horizon |
+| `set_applied_control(u)` | Set the control actually applied at the last step |
+| `set_cost(cost)` | Swap the cost object |
+| `set_state_reference(ref, horizon)` | Upload flattened reference trajectory `(T × nx,)` |
+
+### `QuadrotorMPPI`
+
+Standard MPPI for the 13-DOF quadrotor.
 
 ```python
-class DoubleIntegratorMPPI:
-    def __init__(self, config: MPPIConfig):
-        ...
-    
-    def compute(self, state: numpy.ndarray) -> None:
-        """Compute the optimal control for the given state (async)."""
-    
-    def get_action(self) -> numpy.ndarray:
-        """Retrieve the first action of the optimal sequence."""
-        
-    def shift(self) -> None:
-        """Shift the nominal trajectory forward by one step."""
+ctrl = cuda_mppi.QuadrotorMPPI(config, dynamics, cost)
+```
+
+### `QuadrotorKMPPI`
+
+Kernel MPPI — RBF-parameterised noise in support-point space, ~6× faster
+per step than standard MPPI.
+
+```python
+config.num_support_pts = 10   # M ≪ T RBF knots
+ctrl = cuda_mppi.QuadrotorKMPPI(config, dynamics, cost)
+```
+
+### `QuadrotorSMPPI`
+
+Smooth MPPI — velocity-space noise integration.
+
+```python
+ctrl = cuda_mppi.QuadrotorSMPPI(config, dynamics, cost)
+```
+
+> **⚠️ Known issue:** Effective exploration collapses to near-zero for small
+> $\Delta t$ because `integrate_actions_kernel` scales noise by $\Delta t$.
+> Tracking diverges until [issue #24](https://github.com/riccardo-enr/cuda-mppi/issues/24) is fixed.
+
+### `QuadrotorIMPPI`
+
+Informative MPPI — biased sampling toward reference + information gain.
+Extends the standard MPPI interface with:
+
+```python
+ctrl = cuda_mppi.QuadrotorIMPPI(config, dynamics, cost)
+ctrl.set_reference_trajectory(ref_flat, horizon)
+ctrl.update_cost_grid(grid_2d)
+ctrl.update_cost_grid_3d(grid_3d)
+ctrl.update_cost_info_field(info_field)
+```
+
+### `DI3IMPPI`
+
+I-MPPI for the 3D double integrator (`DoubleIntegrator3D` + `InformativeCost3D`).
+
+```python
+ctrl = cuda_mppi.DI3IMPPI(config, dynamics_3d, cost_3d)
 ```
 
 ### `JITMPPIController`
 
-The generic controller that compiles user-defined dynamics/costs at runtime.
+Generic controller with runtime-compiled dynamics and cost (NVRTC). Write
+your dynamics and cost in C++/CUDA strings; the library compiles a `.cubin`
+at startup.
 
 ```python
-class JITMPPIController:
-    def __init__(self, 
-                 config: MPPIConfig, 
-                 dynamics_code: str, 
-                 cost_code: str, 
-                 include_paths: List[str]):
-        ...
-        
-    def compute(self, state: numpy.ndarray) -> None: ...
-    def get_action(self) -> numpy.ndarray: ...
-    def shift(self) -> None: ...
+ctrl = cuda_mppi.JITMPPIController(
+    config,
+    dynamics_code="__device__ void step(...) { ... }",
+    cost_code="__device__ float compute(...) { ... }",
+    include_paths=["/path/to/cuda-mppi/include"],
+)
+ctrl.compute(state)
+action = ctrl.get_action()
 ```
 
-## Note on Bindings
+---
 
-Currently, the `DoubleIntegratorMPPI` and `JITMPPIController` are the primary classes exposed. Bindings for generalized SMPPI and KMPPI are present in the codebase but may require enabling in `bindings/bindings.cu`.
+## Planning
+
+### `TrajectoryGenerator`
+
+Layer-2 informative path planner that generates waypoint sequences maximising
+information gain subject to dynamic feasibility.
+
+```python
+tg_cfg = cuda_mppi.TrajectoryGeneratorConfig()
+tg_cfg.horizon = 20
+tg_cfg.num_samples = 500
+
+tg = cuda_mppi.TrajectoryGenerator(tg_cfg, mppi_ctrl)
+result = tg.plan(state, info_field)
+waypoints = result.trajectory   # (T × 3) numpy array
+```
