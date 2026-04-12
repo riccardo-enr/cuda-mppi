@@ -3,39 +3,47 @@
 ## Build
 
 ```bash
-pixi run cmake-configure   # configure with pixi
-pixi run cmake-build        # build all targets
-```
-
-Or manually:
-
-```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 
+## Pixi tasks
+
+```bash
+pixi run install    # pip install the Python bindings
+pixi run test       # pytest tests/ -v
+pixi run tracking   # quadrotor tracking test with plot
+```
+
 ## Issue-closing checklist
 
-Before closing any GitHub issue, run the relevant tests below and paste the output in the closing comment.
+Before closing any GitHub issue, run **all applicable** test categories below (union of all that apply) and paste the output in the closing comment.
+
+For changes that span multiple categories, run all relevant suites.
+For new features, add tests or justify in the closing comment why none were added.
 
 ### Trajectory tracking controllers (MPPI, I-MPPI, S-MPPI, K-MPPI, BSpline-MPPI)
 
 ```bash
-pixi run python tests/test_quadrotor_tracking.py
+pixi run tracking
 ```
 
-- Total RMSE must be <= 0.70 m (paper baseline)
-- Test must print "Tracking test passed"
+- The automated test asserts RMSE < 2.0 m (regression guard)
+- Paper baseline is 0.69 m; report the actual RMSE in the closing comment
+- If RMSE regresses significantly above ~0.70 m, investigate before closing
 
 ### Core kernel / config changes
 
 ```bash
+./build/tests/mppi_gtest
 ./build/tests/i_mppi_gtest
+./build/tests/pendulum_test
 ./build/tests/bspline_test
 ./build/tests/fsmi_unit_test
 ```
 
-All tests must report `[  PASSED  ]`.
+GTest suites (`mppi_gtest`, `i_mppi_gtest`) must report `[  PASSED  ]`.
+Other binaries (`pendulum_test`, `bspline_test`, `fsmi_unit_test`) print `PASSED` on success.
 
 ### FSMI / occupancy grid changes
 
@@ -46,7 +54,8 @@ All tests must report `[  PASSED  ]`.
 ### Python bindings changes
 
 ```bash
-pixi run pytest tests/ -v
+pixi run install
+pixi run test
 ```
 
 ### Closing comment format

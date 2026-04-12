@@ -4,14 +4,16 @@
 
 ## Test results
 
-<!-- Run the relevant tests from the checklist below and paste output -->
+<!-- Run ALL applicable test categories and paste output. See CLAUDE.md for details. -->
 
 ### Tracking controllers (if applicable)
-- [ ] `pixi run python tests/test_quadrotor_tracking.py`
-- RMSE: <!-- e.g. 0.596 m -->
+- [ ] `pixi run tracking`
+- RMSE: <!-- e.g. 0.596 m (paper baseline: 0.69 m) -->
 
 ### Core kernel / config (if applicable)
+- [ ] `./build/tests/mppi_gtest`
 - [ ] `./build/tests/i_mppi_gtest`
+- [ ] `./build/tests/pendulum_test`
 - [ ] `./build/tests/bspline_test`
 - [ ] `./build/tests/fsmi_unit_test`
 
@@ -19,7 +21,10 @@
 - [ ] `./build/tests/fsmi_unit_test`
 
 ### Python bindings (if applicable)
-- [ ] `pixi run pytest tests/ -v`
+- [ ] `pixi run install && pixi run test`
+
+### New features
+- [ ] Tests added, or justification for no tests: <!-- explain -->
 
 ## Closes
 
