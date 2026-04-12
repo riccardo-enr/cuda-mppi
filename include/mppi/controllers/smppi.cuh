@@ -331,6 +331,28 @@ public:
     return action;
   }
 
+  /** @brief Get the current cost function (by value). */
+  Cost cost() const { return cost_; }
+
+  /** @brief Replace the cost function. */
+  void set_cost(const Cost & c) { cost_ = c; }
+
+  /**
+   * @brief Set nominal control by broadcasting a single vector across the horizon.
+   * @param u  Control vector $[n_u]$.
+   */
+  void set_nominal_control(const Eigen::VectorXf & u)
+  {
+    std::vector<float> flat(config_.horizon * config_.nu);
+    for (int t = 0; t < config_.horizon; ++t) {
+      for (int i = 0; i < config_.nu; ++i) {
+        flat[t * config_.nu + i] = u[i];
+      }
+    }
+    HANDLE_ERROR(cudaMemcpy(d_action_seq_, flat.data(),
+        flat.size() * sizeof(float), cudaMemcpyHostToDevice));
+  }
+
 private:
   MPPIConfig config_;   ///< MPPI hyperparameters.
   Dynamics dynamics_;   ///< Dynamics model.
