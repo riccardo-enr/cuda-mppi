@@ -2,13 +2,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.8.27">
+<meta name="generator" content="quarto-1.9.37">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Reactive MPPI Controllers: Theory &amp; Variants – cuda-mppi</title>
+<title>Controllers: Theory &amp; Variants – cuda-mppi</title>
 <style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
 div.columns{display: flex; gap: min(4vw, 1.5em);}
@@ -32,15 +35,14 @@ ul.task-list li input[type="checkbox"] {
 <meta name="quarto:offset" content="../">
 <script src="../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
 <script src="../site_libs/quarto-html/popper.min.js"></script>
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-0b802d246790ecd80511443f8ae76f95.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-312b66175a1f02a035263df1a0cb5ed4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -70,7 +72,7 @@ ul.task-list li input[type="checkbox"] {
 }</script>
 
   <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
 <script type="text/javascript">
 const typesetMath = (el) => {
@@ -137,7 +139,7 @@ window.Quarto = {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../controllers/controllers.html">Controllers</a></li><li class="breadcrumb-item"><a href="../controllers/controllers.html">Reactive MPPI Controllers: Theory &amp; Variants</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../controllers/controllers.html">Controllers</a></li><li class="breadcrumb-item"><a href="../controllers/controllers.html">Controllers: Theory &amp; Variants</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -215,7 +217,7 @@ window.Quarto = {
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../controllers/controllers.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Reactive MPPI Controllers: Theory &amp; Variants</span></a>
+ <span class="menu-text">Controllers: Theory &amp; Variants</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -272,36 +274,35 @@ window.Quarto = {
   <ul>
   <li><a href="#introduction-to-path-integral-control" id="toc-introduction-to-path-integral-control" class="nav-link active" data-scroll-target="#introduction-to-path-integral-control">Introduction to Path Integral Control</a>
   <ul class="collapse">
-  <li><a href="#the-information-theoretic-basis" id="toc-the-information-theoretic-basis" class="nav-link" data-scroll-target="#the-information-theoretic-basis">The Information-Theoretic Basis</a></li>
+  <li><a href="#the-information-theoretic-basis" id="toc-the-information-theoretic-basis" class="nav-link" data-scroll-target="#the-information-theoretic-basis">The information-theoretic basis</a></li>
   </ul></li>
   <li><a href="#standard-mppi" id="toc-standard-mppi" class="nav-link" data-scroll-target="#standard-mppi">1. Standard MPPI</a>
   <ul class="collapse">
-  <li><a href="#theory" id="toc-theory" class="nav-link" data-scroll-target="#theory">Theory</a></li>
   <li><a href="#algorithm" id="toc-algorithm" class="nav-link" data-scroll-target="#algorithm">Algorithm</a></li>
   <li><a href="#characteristics" id="toc-characteristics" class="nav-link" data-scroll-target="#characteristics">Characteristics</a></li>
   </ul></li>
-  <li><a href="#smooth-mppi-smppi" id="toc-smooth-mppi-smppi" class="nav-link" data-scroll-target="#smooth-mppi-smppi">2. Smooth MPPI (SMPPI)</a>
+  <li><a href="#smooth-mppi-s-mppi" id="toc-smooth-mppi-s-mppi" class="nav-link" data-scroll-target="#smooth-mppi-s-mppi">2. Smooth MPPI (S-MPPI)</a>
   <ul class="collapse">
-  <li><a href="#theory-1" id="toc-theory-1" class="nav-link" data-scroll-target="#theory-1">Theory</a></li>
-  <li><a href="#algorithm-1" id="toc-algorithm-1" class="nav-link" data-scroll-target="#algorithm-1">Algorithm</a></li>
+  <li><a href="#theory" id="toc-theory" class="nav-link" data-scroll-target="#theory">Theory</a></li>
   <li><a href="#characteristics-1" id="toc-characteristics-1" class="nav-link" data-scroll-target="#characteristics-1">Characteristics</a></li>
   </ul></li>
-  <li><a href="#kernel-mppi-kmppi" id="toc-kernel-mppi-kmppi" class="nav-link" data-scroll-target="#kernel-mppi-kmppi">3. Kernel MPPI (KMPPI)</a>
+  <li><a href="#kernel-mppi-k-mppi" id="toc-kernel-mppi-k-mppi" class="nav-link" data-scroll-target="#kernel-mppi-k-mppi">3. Kernel MPPI (K-MPPI)</a>
   <ul class="collapse">
-  <li><a href="#theory-2" id="toc-theory-2" class="nav-link" data-scroll-target="#theory-2">Theory</a></li>
-  <li><a href="#implementation-the-support-point-method" id="toc-implementation-the-support-point-method" class="nav-link" data-scroll-target="#implementation-the-support-point-method">Implementation (The “Support Point” Method)</a></li>
+  <li><a href="#theory-1" id="toc-theory-1" class="nav-link" data-scroll-target="#theory-1">Theory</a></li>
   <li><a href="#characteristics-2" id="toc-characteristics-2" class="nav-link" data-scroll-target="#characteristics-2">Characteristics</a></li>
   </ul></li>
-  <li><a href="#summary-comparison" id="toc-summary-comparison" class="nav-link" data-scroll-target="#summary-comparison">Summary Comparison</a></li>
+  <li><a href="#b-spline-mppi" id="toc-b-spline-mppi" class="nav-link" data-scroll-target="#b-spline-mppi">4. B-Spline MPPI</a></li>
+  <li><a href="#informative-mppi-i-mppi" id="toc-informative-mppi-i-mppi" class="nav-link" data-scroll-target="#informative-mppi-i-mppi">5. Informative MPPI (I-MPPI)</a></li>
+  <li><a href="#summary-comparison" id="toc-summary-comparison" class="nav-link" data-scroll-target="#summary-comparison">Summary comparison</a></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../controllers/controllers.html">Controllers</a></li><li class="breadcrumb-item"><a href="../controllers/controllers.html">Reactive MPPI Controllers: Theory &amp; Variants</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../controllers/controllers.html">Controllers</a></li><li class="breadcrumb-item"><a href="../controllers/controllers.html">Controllers: Theory &amp; Variants</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Reactive MPPI Controllers: Theory &amp; Variants</h1>
+<h1 class="title">Controllers: Theory &amp; Variants</h1>
 </div>
 
 
@@ -320,139 +321,223 @@ window.Quarto = {
 
 <section id="introduction-to-path-integral-control" class="level1">
 <h1>Introduction to Path Integral Control</h1>
-<p>Model Predictive Path Integral (MPPI) control is a class of sampling-based algorithms rooted in the duality between <strong>Stochastic Optimal Control</strong> and <strong>Statistical Mechanics</strong>. Unlike gradient-based methods (e.g., iLQR), MPPI does not require differentiability of the dynamics or cost function, making it robust for complex, discontinuous environments (e.g., collision avoidance).</p>
-<p>The core idea is to solve the optimal control problem by simulating thousands of random trajectories (rollouts) and computing a weighted average of the applied perturbations. The weights are derived from the <strong>Feynman-Kac formula</strong>, relating the optimal value function to the free energy of the system.</p>
+<p>Model Predictive Path Integral (MPPI) control is a sampling-based algorithm rooted in the duality between <strong>Stochastic Optimal Control</strong> and <strong>Statistical Mechanics</strong>. Unlike gradient-based methods (e.g., iLQR), MPPI does not require differentiability of the dynamics or cost function, making it suitable for complex, discontinuous environments.</p>
 <section id="the-information-theoretic-basis" class="level2">
-<h2 class="anchored" data-anchor-id="the-information-theoretic-basis">The Information-Theoretic Basis</h2>
-<p>Consider the stochastic dynamical system: <span class="math display">\[ dx = f(x, t)dt + G(x, t)u dt + G(x, t)\Sigma^{1/2} d\omega \]</span> where <span class="math inline">\(d\omega\)</span> is Brownian motion. The objective is to minimize the expectation of a cost functional: <span class="math display">\[ J(u) = \mathbb{E} \left[ \phi(x_T) + \int_{t_0}^{T} \left( q(x, t) + \frac{1}{2} u^T R u \right) dt \right] \]</span></p>
-<p>By defining the optimal control <span class="math inline">\(u^*\)</span>, the problem can be transformed into minimizing the <strong>Kullback-Leibler (KL) Divergence</strong> between the controlled distribution of trajectories <span class="math inline">\(\mathbb{P}_u\)</span> and the optimal distribution <span class="math inline">\(\mathbb{P}^*\)</span>.</p>
-<p>The optimal control update law is given by the importance-sampling weighted average: <span class="math display">\[ u^*(t) = u_{nom}(t) + \frac{\sum_{k=1}^K w_k \epsilon_k(t)}{\sum_{k=1}^K w_k} \]</span></p>
-<p>where the weights <span class="math inline">\(w_k\)</span> follow the Boltzmann distribution: <span class="math display">\[ w_k = \exp\left(-\frac{1}{\lambda} \left( S(\tau_k) - \rho \right) \right) \]</span></p>
-<ul>
-<li><span class="math inline">\(S(\tau_k)\)</span>: The total cost of the <span class="math inline">\(k\)</span>-th rollout.</li>
-<li><span class="math inline">\(\lambda\)</span>: Temperature parameter (inverse sensitivity).</li>
-<li><span class="math inline">\(\epsilon_k\)</span>: The sampled noise/perturbation.</li>
-</ul>
+<h2 class="anchored" data-anchor-id="the-information-theoretic-basis">The information-theoretic basis</h2>
+<p>Consider the controlled stochastic system: <span class="math display">\[
+dx = f(x,t)\,dt + G(x,t)\,u\,dt + G(x,t)\,\Sigma^{1/2}\,d\omega
+\]</span> where <span class="math inline">\(d\omega\)</span> is Brownian motion. The objective is to minimise: <span class="math display">\[
+J(u) = \mathbb{E}\!\left[\phi(x_T) + \int_{t_0}^{T}\!\left(q(x,t) + \tfrac{1}{2}u^\top R\,u\right)dt\right]
+\]</span></p>
+<p>Via the Feynman–Kac formula this reduces to minimising the KL-divergence between the controlled path distribution and the optimal one. The resulting <strong>importance-sampling update</strong> is: <span class="math display">\[
+u^*(t) = u_{\mathrm{nom}}(t) + \frac{\sum_{k=1}^K w_k\,\epsilon_k(t)}{\sum_{k=1}^K w_k}
+\]</span> with Boltzmann weights: <span class="math display">\[
+w_k = \exp\!\left(-\tfrac{1}{\lambda}\bigl(S(\tau_k) - \rho\bigr)\right)
+\]</span></p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Symbol</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(K\)</span></td>
+<td>Number of parallel rollouts (<code>num_samples</code>)</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(T\)</span></td>
+<td>Horizon length (<code>horizon</code>)</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(\lambda\)</span></td>
+<td>Temperature (<code>lambda_</code>)</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(S(\tau_k)\)</span></td>
+<td>Total cost of rollout <span class="math inline">\(k\)</span></td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(\epsilon_k\)</span></td>
+<td>Sampled noise perturbation</td>
+</tr>
+</tbody>
+</table>
 <hr>
 </section>
 </section>
 <section id="standard-mppi" class="level1">
 <h1>1. Standard MPPI</h1>
-<p>The standard formulation assumes that the control inputs are independent across time steps and dimensions.</p>
-<section id="theory" class="level3">
-<h3 class="anchored" data-anchor-id="theory">Theory</h3>
-<p>The exploration noise is modeled as independent and identically distributed (i.i.d.) Gaussian noise: <span class="math display">\[ u_k(t) \sim \mathcal{N}(u_{nom}(t), \Sigma) \]</span> This corresponds to “white noise” exploration. The control authority is directly updated based on the instantaneous correlation between the noise and the trajectory cost.</p>
-</section>
+<p><strong>Header:</strong> <code>include/mppi/controllers/mppi.cuh</code> <strong>Python class:</strong> <code>QuadrotorMPPI</code></p>
+<p>The standard formulation samples i.i.d. Gaussian noise in control space: <span class="math display">\[
+\epsilon_k(t) \sim \mathcal{N}(0,\,\Sigma)
+\]</span></p>
 <section id="algorithm" class="level3">
 <h3 class="anchored" data-anchor-id="algorithm">Algorithm</h3>
 <ol type="1">
-<li><strong>Sample</strong>: Generate <span class="math inline">\(K\)</span> sequences of noise <span class="math inline">\(\epsilon_k \sim \mathcal{N}(0, \Sigma)\)</span>.</li>
-<li><strong>Rollout</strong>: Propagate dynamics <span class="math inline">\(x_{t+1} = f(x_t, u_{nom, t} + \epsilon_{k, t})\)</span>.</li>
-<li><strong>Evaluate</strong>: Compute cost <span class="math inline">\(J_k\)</span>.</li>
-<li><strong>Reweight</strong>: Compute <span class="math inline">\(w_k \propto \exp(-J_k / \lambda)\)</span>.</li>
-<li><strong>Update</strong>: <span class="math inline">\(u_{nom} \leftarrow u_{nom} + \sum w_k \epsilon_k\)</span>.</li>
+<li><strong>Sample</strong> <span class="math inline">\(K\)</span> noise sequences <span class="math inline">\(\epsilon_k \sim \mathcal{N}(0, \Sigma)\)</span>.</li>
+<li><strong>Rollout</strong> <span class="math inline">\(x_{t+1} = f(x_t,\,u_{\mathrm{nom},t} + \epsilon_{k,t})\)</span>.</li>
+<li><strong>Evaluate</strong> cost <span class="math inline">\(J_k = \sum_t c(x_t, u_t) + \phi(x_T)\)</span>.</li>
+<li><strong>Reweight</strong> <span class="math inline">\(w_k \propto \exp(-J_k / \lambda)\)</span>, computed on-GPU via CUB.</li>
+<li><strong>Update</strong> <span class="math inline">\(u_{\mathrm{nom}} \leftarrow u_{\mathrm{nom}} + \sum_k w_k\,\epsilon_k\)</span>.</li>
+<li><strong>Shift</strong> nominal sequence one step forward.</li>
 </ol>
 </section>
 <section id="characteristics" class="level3">
 <h3 class="anchored" data-anchor-id="characteristics">Characteristics</h3>
 <ul>
-<li><strong>Pros</strong>: Computationally cheapest; Maximum high-frequency exploration.</li>
-<li><strong>Cons</strong>: Resulting trajectories can be jagged/noisy (“bang-bang” behavior) if <span class="math inline">\(\lambda\)</span> is low, which is undesirable for mechanical actuators.</li>
+<li>Cheapest to evaluate; maximum high-frequency exploration.</li>
+<li>Trajectories can be discontinuous if <span class="math inline">\(\lambda\)</span> is small.</li>
 </ul>
 <hr>
 </section>
 </section>
-<section id="smooth-mppi-smppi" class="level1">
-<h1>2. Smooth MPPI (SMPPI)</h1>
-<p>For robotic systems, high-frequency control oscillation causes wear and instability. Smooth MPPI (SMPPI) enforces continuity by lifting the optimization into the <strong>velocity</strong> space of the control.</p>
-<section id="theory-1" class="level3">
-<h3 class="anchored" data-anchor-id="theory-1">Theory</h3>
-<p>Instead of optimizing the control <span class="math inline">\(u\)</span> directly, we define an auxiliary control variable <span class="math inline">\(v\)</span> (control velocity) such that: <span class="math display">\[ \dot{u} = v \]</span> The discrete-time update becomes an integration step: <span class="math display">\[ u_{t+1} = u_t + v_t \Delta t \]</span></p>
-<p>The cost function is augmented to penalize rapid changes in control: <span class="math display">\[ J_{smooth} = J_{base} + \gamma \sum_{t=0}^{T-1} \| u_{t+1} - u_{t} \|^2 \]</span></p>
-</section>
-<section id="algorithm-1" class="level3">
-<h3 class="anchored" data-anchor-id="algorithm-1">Algorithm</h3>
-<ol type="1">
-<li><strong>Sample</strong>: Generate perturbations in velocity space <span class="math inline">\(\delta v_k \sim \mathcal{N}(0, \Sigma_v)\)</span>.</li>
-<li><strong>Integrate</strong>: Compute control sequence <span class="math inline">\(u_{k, t} = u_{nom, t} + \sum_{i=0}^t \delta v_{k, i} \Delta t\)</span>.</li>
-<li><strong>Rollout &amp; Evaluate</strong>: As in standard MPPI.</li>
-<li><strong>Update</strong>: The weighted update is applied to the <em>velocity</em> sequence, which is then re-integrated to form the new nominal control.</li>
-</ol>
+<section id="smooth-mppi-s-mppi" class="level1">
+<h1>2. Smooth MPPI (S-MPPI)</h1>
+<p><strong>Header:</strong> <code>include/mppi/controllers/smppi.cuh</code> <strong>Python class:</strong> <code>QuadrotorSMPPI</code></p>
+<blockquote class="blockquote">
+<p><strong>Status:</strong> Python bindings are available. The exploration mechanism has a known scaling issue — <code>integrate_actions_kernel</code> multiplies noise by <span class="math inline">\(\Delta t\)</span>, giving effective variance <span class="math inline">\(\sigma^2 \Delta t^2 \approx 0\)</span> for small timesteps. Tracking diverges until this is fixed. See <a href="https://github.com/riccardo-enr/cuda-mppi/issues/24">issue #24</a>.</p>
+</blockquote>
+<p>S-MPPI lifts optimisation into the <strong>velocity</strong> (rate-of-change) of the control signal, enforcing <span class="math inline">\(C^1\)</span> continuity.</p>
+<section id="theory" class="level3">
+<h3 class="anchored" data-anchor-id="theory">Theory</h3>
+<p>Define an auxiliary control-velocity <span class="math inline">\(v\)</span> such that <span class="math inline">\(\dot{u} = v\)</span>. In discrete time: <span class="math display">\[
+u_{t+1} = u_t + v_t\,\Delta t
+\]</span></p>
+<p>Noise is sampled in velocity space: <span class="math display">\[
+\delta v_k \sim \mathcal{N}(0,\,\Sigma_v)
+\]</span></p>
+<p>and integrated to produce smooth perturbations: <span class="math display">\[
+\epsilon_{k,t} = \sum_{i=0}^{t} \delta v_{k,i}\,\Delta t
+\]</span></p>
+<p>An additional smoothness penalty can be added to the cost: <span class="math display">\[
+J_{\mathrm{smooth}} = J_{\mathrm{base}} + \gamma \sum_{t=0}^{T-1}\|u_{t+1} - u_t\|^2
+\]</span></p>
 </section>
 <section id="characteristics-1" class="level3">
 <h3 class="anchored" data-anchor-id="characteristics-1">Characteristics</h3>
 <ul>
-<li><strong>Pros</strong>: Produces <span class="math inline">\(C^1\)</span> continuous control signals; naturally handles actuator limits.</li>
-<li><strong>Cons</strong>: The “inertia” in the control signal can make the system slower to react to sudden obstacles.</li>
+<li><span class="math inline">\(C^1\)</span>-continuous controls; reduced actuator wear.</li>
+<li>Slower reaction to sudden obstacles due to control inertia.</li>
+<li>⚠️ Noise attenuation bug pending fix (issue #24).</li>
 </ul>
 <hr>
 </section>
 </section>
-<section id="kernel-mppi-kmppi" class="level1">
-<h1>3. Kernel MPPI (KMPPI)</h1>
-<p>Kernel MPPI (also known as Tubal MPPI or Structured Noise MPPI) addresses the smoothness problem from a probabilistic perspective. Instead of white noise, it samples <strong>colored noise</strong> from a Gaussian Process (GP).</p>
-<section id="theory-2" class="level3">
-<h3 class="anchored" data-anchor-id="theory-2">Theory</h3>
-<p>We assume the perturbations <span class="math inline">\(\epsilon(t)\)</span> lie in a Reproducing Kernel Hilbert Space (RKHS) defined by a kernel function <span class="math inline">\(k(t, t')\)</span>. Common choices include the Radial Basis Function (RBF) (Squared Exponential): <span class="math display">\[ k(t_i, t_j) = \sigma_f^2 \exp\left( -\frac{(t_i - t_j)^2}{2l^2} \right) \]</span> This kernel implies that perturbations at time <span class="math inline">\(t\)</span> are highly correlated with perturbations at <span class="math inline">\(t'\)</span>.</p>
-</section>
-<section id="implementation-the-support-point-method" class="level3">
-<h3 class="anchored" data-anchor-id="implementation-the-support-point-method">Implementation (The “Support Point” Method)</h3>
-<p>Sampling directly from a high-dimensional GP (<span class="math inline">\(T \times N_u\)</span>) is expensive (<span class="math inline">\(O(T^3)\)</span>). KMPPI uses a low-rank approximation: 1. <strong>Support Points</strong>: Define <span class="math inline">\(M \ll T\)</span> anchor points (knots) in time. 2. <strong>Sampling</strong>: Sample noise <span class="math inline">\(\theta \in \mathbb{R}^{M}\)</span> at these knots. 3. <strong>Interpolation</strong>: Compute the dense noise sequence <span class="math inline">\(\epsilon \in \mathbb{R}^T\)</span> via the kernel interaction matrix <span class="math inline">\(W\)</span>: <span class="math display">\[ \epsilon = W \theta \]</span> where <span class="math inline">\(W = K_{TM} K_{MM}^{-1}\)</span>.</p>
+<section id="kernel-mppi-k-mppi" class="level1">
+<h1>3. Kernel MPPI (K-MPPI)</h1>
+<p><strong>Header:</strong> <code>include/mppi/controllers/kmppi.cuh</code> <strong>Python class:</strong> <code>QuadrotorKMPPI</code></p>
+<p>K-MPPI samples <strong>colored noise</strong> from a Gaussian Process defined by an RBF kernel, reducing the effective search dimensionality from <span class="math inline">\(T \cdot n_u\)</span> to <span class="math inline">\(M \cdot n_u\)</span> where <span class="math inline">\(M \ll T\)</span>.</p>
+<section id="theory-1" class="level3">
+<h3 class="anchored" data-anchor-id="theory-1">Theory</h3>
+<p>Perturbations <span class="math inline">\(\epsilon(t)\)</span> lie in an RKHS defined by: <span class="math display">\[
+k(t_i, t_j) = \sigma_f^2 \exp\!\left(-\frac{(t_i - t_j)^2}{2\ell^2}\right)
+\]</span></p>
+<p>Rather than sampling the full GP, we use <span class="math inline">\(M\)</span> <strong>support points</strong> (knots):</p>
+<ol type="1">
+<li>Sample latent noise <span class="math inline">\(\theta \in \mathbb{R}^{M \times n_u} \sim \mathcal{N}(0, I)\)</span>.</li>
+<li>Compute the interpolation matrix <span class="math inline">\(W = K_{TM}\,K_{MM}^{-1}\)</span> (done once at init).</li>
+<li>Expand: <span class="math inline">\(\epsilon = W\theta \in \mathbb{R}^{T \times n_u}\)</span>.</li>
+</ol>
+<p>The weight update applies directly to <span class="math inline">\(\theta\)</span>, keeping optimisation in the low-dimensional latent space.</p>
 </section>
 <section id="characteristics-2" class="level3">
 <h3 class="anchored" data-anchor-id="characteristics-2">Characteristics</h3>
 <ul>
-<li><strong>Pros</strong>:
-<ul>
-<li><strong>smoothness</strong>: Guaranteed by the kernel bandwidth <span class="math inline">\(l\)</span>.</li>
-<li><strong>Efficiency</strong>: Reduces the dimensionality of the search space from <span class="math inline">\(T \cdot N_u\)</span> to <span class="math inline">\(M \cdot N_u\)</span>.</li>
-</ul></li>
-<li><strong>Cons</strong>: Requires tuning of kernel hyperparameters (<span class="math inline">\(l, \sigma_f\)</span>); slightly higher initialization cost for matrix <span class="math inline">\(W\)</span>.</li>
+<li>Guaranteed smooth trajectories — bandwidth <span class="math inline">\(\ell\)</span> is derived automatically from support-point spacing.</li>
+<li>~6× faster per step than standard MPPI for the same <span class="math inline">\(K\)</span> (fewer noise DOFs).</li>
+<li>Slightly higher RMSE than MPPI on lemniscate tracking (0.79 m vs 0.60 m, 30 s trial).</li>
+<li>Only user-tunable knob: <code>num_support_pts</code> <span class="math inline">\(M\)</span> (more points → finer-grained control, slower).</li>
 </ul>
 <hr>
 </section>
 </section>
+<section id="b-spline-mppi" class="level1">
+<h1>4. B-Spline MPPI</h1>
+<p><strong>Header:</strong> <code>include/mppi/controllers/bspline_mppi.cuh</code></p>
+<p>Parameterises the control trajectory as a <strong>cubic B-spline</strong>, guaranteeing <span class="math inline">\(C^2\)</span> continuity (continuous acceleration). Noise is sampled at the B-spline control points.</p>
+<ul>
+<li>Smoother than K-MPPI (one higher continuity order).</li>
+<li>Python bindings not yet exposed.</li>
+</ul>
+<hr>
+</section>
+<section id="informative-mppi-i-mppi" class="level1">
+<h1>5. Informative MPPI (I-MPPI)</h1>
+<p><strong>Header:</strong> <code>include/mppi/controllers/i_mppi.cuh</code> <strong>Python classes:</strong> <code>QuadrotorIMPPI</code>, <code>DI3IMPPI</code></p>
+<p>See the <a href="../controllers/i_mppi.html">dedicated I-MPPI page</a> for theory and usage.</p>
+<hr>
+</section>
 <section id="summary-comparison" class="level1">
-<h1>Summary Comparison</h1>
+<h1>Summary comparison</h1>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 25%">
-<col style="width: 25%">
-<col style="width: 25%">
-<col style="width: 25%">
+<col style="width: 16%">
+<col style="width: 10%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 29%">
+<col style="width: 14%">
 </colgroup>
 <thead>
 <tr class="header">
-<th style="text-align: left;">Feature</th>
-<th style="text-align: left;">Standard MPPI</th>
-<th style="text-align: left;">Smooth MPPI</th>
-<th style="text-align: left;">Kernel MPPI</th>
+<th>Feature</th>
+<th>MPPI</th>
+<th>S-MPPI</th>
+<th>K-MPPI</th>
+<th>B-Spline MPPI</th>
+<th>I-MPPI</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: left;"><strong>Control Variable</strong></td>
-<td style="text-align: left;"><span class="math inline">\(u\)</span> (Direct)</td>
-<td style="text-align: left;"><span class="math inline">\(\Delta u\)</span> (Velocity)</td>
-<td style="text-align: left;"><span class="math inline">\(\epsilon = W\theta\)</span> (Latent)</td>
+<td>Control variable</td>
+<td><span class="math inline">\(u\)</span></td>
+<td><span class="math inline">\(\dot{u}\)</span> (vel.)</td>
+<td><span class="math inline">\(\theta\)</span> (latent)</td>
+<td>B-spline cpts</td>
+<td><span class="math inline">\(u\)</span> + info cost</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;"><strong>Noise Profile</strong></td>
-<td style="text-align: left;">White (Uncorrelated)</td>
-<td style="text-align: left;">Integrated (Brownian)</td>
-<td style="text-align: left;">Colored (GP/RBF)</td>
+<td>Noise type</td>
+<td>White</td>
+<td>Brownian</td>
+<td>GP/RBF</td>
+<td>B-spline GP</td>
+<td>White</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;"><strong>Smoothness</strong></td>
-<td style="text-align: left;">Low (Jagged)</td>
-<td style="text-align: left;">High (Integrated)</td>
-<td style="text-align: left;">High (Spectral)</td>
+<td>Smoothness</td>
+<td>Low</td>
+<td><span class="math inline">\(C^1\)</span></td>
+<td><span class="math inline">\(C^\infty\)</span> (RBF)</td>
+<td><span class="math inline">\(C^2\)</span></td>
+<td>Low</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;"><strong>Best For</strong></td>
-<td style="text-align: left;">Abstract Dynamics, Simulation</td>
-<td style="text-align: left;">Real Hardware, Actuators</td>
-<td style="text-align: left;">High-Dim Systems, Flight</td>
+<td>Compute/step</td>
+<td>baseline</td>
+<td>~baseline</td>
+<td>~6× faster</td>
+<td>—</td>
+<td>~baseline</td>
+</tr>
+<tr class="odd">
+<td>Python exposed</td>
+<td>✓</td>
+<td>✓ (⚠️ #24)</td>
+<td>✓</td>
+<td>—</td>
+<td>✓</td>
+</tr>
+<tr class="even">
+<td>Quadrotor RMSE (30 s)</td>
+<td>0.60 m</td>
+<td>—</td>
+<td>0.79 m</td>
+<td>—</td>
+<td>—</td>
 </tr>
 </tbody>
 </table>

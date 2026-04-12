@@ -2,13 +2,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.8.27">
+<meta name="generator" content="quarto-1.9.37">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
 <title>Development Guide – cuda-mppi</title>
 <style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
 div.columns{display: flex; gap: min(4vw, 1.5em);}
@@ -67,15 +70,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <meta name="quarto:offset" content="../">
 <script src="../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
 <script src="../site_libs/quarto-html/popper.min.js"></script>
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-0b802d246790ecd80511443f8ae76f95.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-312b66175a1f02a035263df1a0cb5ed4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -221,7 +223,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../controllers/controllers.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Reactive MPPI Controllers: Theory &amp; Variants</span></a>
+ <span class="menu-text">Controllers: Theory &amp; Variants</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -276,14 +278,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#contribution-workflow" id="toc-contribution-workflow" class="nav-link active" data-scroll-target="#contribution-workflow">Contribution Workflow</a></li>
-  <li><a href="#testing" id="toc-testing" class="nav-link" data-scroll-target="#testing">Testing</a>
+  <li><a href="#workflow" id="toc-workflow" class="nav-link active" data-scroll-target="#workflow">Workflow</a></li>
+  <li><a href="#environment" id="toc-environment" class="nav-link" data-scroll-target="#environment">Environment</a></li>
+  <li><a href="#test-checklist" id="toc-test-checklist" class="nav-link" data-scroll-target="#test-checklist">Test checklist</a>
   <ul class="collapse">
-  <li><a href="#c-tests" id="toc-c-tests" class="nav-link" data-scroll-target="#c-tests">C++ Tests</a></li>
-  <li><a href="#python-tests" id="toc-python-tests" class="nav-link" data-scroll-target="#python-tests">Python Tests</a></li>
+  <li><a href="#trajectory-tracking-controllers" id="toc-trajectory-tracking-controllers" class="nav-link" data-scroll-target="#trajectory-tracking-controllers">Trajectory tracking controllers</a></li>
+  <li><a href="#core-kernel-config" id="toc-core-kernel-config" class="nav-link" data-scroll-target="#core-kernel-config">Core kernel / config</a></li>
+  <li><a href="#fsmi-occupancy-grid" id="toc-fsmi-occupancy-grid" class="nav-link" data-scroll-target="#fsmi-occupancy-grid">FSMI / occupancy grid</a></li>
+  <li><a href="#python-bindings" id="toc-python-bindings" class="nav-link" data-scroll-target="#python-bindings">Python bindings</a></li>
   </ul></li>
-  <li><a href="#adding-new-dynamics" id="toc-adding-new-dynamics" class="nav-link" data-scroll-target="#adding-new-dynamics">Adding New Dynamics</a></li>
-  <li><a href="#coding-conventions" id="toc-coding-conventions" class="nav-link" data-scroll-target="#coding-conventions">Coding Conventions</a></li>
+  <li><a href="#adding-new-dynamics-and-cost" id="toc-adding-new-dynamics-and-cost" class="nav-link" data-scroll-target="#adding-new-dynamics-and-cost">Adding new dynamics and cost</a>
+  <ul class="collapse">
+  <li><a href="#dynamics" id="toc-dynamics" class="nav-link" data-scroll-target="#dynamics">1. Dynamics</a></li>
+  <li><a href="#cost" id="toc-cost" class="nav-link" data-scroll-target="#cost">2. Cost</a></li>
+  <li><a href="#test" id="toc-test" class="nav-link" data-scroll-target="#test">3. Test</a></li>
+  <li><a href="#python-binding-optional" id="toc-python-binding-optional" class="nav-link" data-scroll-target="#python-binding-optional">4. Python binding (optional)</a></li>
+  </ul></li>
+  <li><a href="#coding-conventions" id="toc-coding-conventions" class="nav-link" data-scroll-target="#coding-conventions">Coding conventions</a></li>
   </ul>
 </nav>
     </div>
@@ -309,57 +320,107 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<section id="contribution-workflow" class="level1">
-<h1>Contribution Workflow</h1>
+<section id="workflow" class="level1">
+<h1>Workflow</h1>
 <ol type="1">
-<li><strong>Fork &amp; Clone</strong>: Fork the repository and clone it locally.</li>
-<li><strong>Branch</strong>: Create a feature branch (e.g., <code>feat/new-dynamics</code>).</li>
-<li><strong>Implement</strong>: Add your code (see below for adding dynamics).</li>
-<li><strong>Test</strong>: Run existing tests and add new ones.</li>
-<li><strong>PR</strong>: Submit a Pull Request.</li>
+<li><strong>Branch</strong>: <code>feat/…</code>, <code>fix/…</code>, <code>chore/…</code> — include the issue number (e.g.&nbsp;<code>feat/42-new-planner</code>).</li>
+<li><strong>Implement</strong>: follow conventions below.</li>
+<li><strong>Test</strong>: run all applicable test suites (see checklist).</li>
+<li><strong>PR</strong>: fill out the PR template and paste test output.</li>
 </ol>
+<p>Every task should have a GitHub issue. Reference it in commits (<code>fixes #42</code>) and in the PR body (<code>Closes #42</code>).</p>
 </section>
-<section id="testing" class="level1">
-<h1>Testing</h1>
-<p>We use a combination of C++ standalone executables and Python scripts.</p>
-<section id="c-tests" class="level2">
-<h2 class="anchored" data-anchor-id="c-tests">C++ Tests</h2>
-<p>Located in <code>src/</code>. Built via CMake.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> build</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cmake</span> ..</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">./pendulum_test</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="environment" class="level1">
+<h1>Environment</h1>
+<p>The recommended environment uses <strong>Pixi</strong>. All dependencies (CUDA headers, Eigen, nanobind, pytest) are pinned in <code>pixi.toml</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run install   <span class="co"># build &amp; install Python bindings</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run test      <span class="co"># pytest tests/ -v</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run tracking  <span class="co"># quadrotor lemniscate tracking with plot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For a standalone C++ build:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cmake</span> <span class="at">-B</span> build <span class="at">-DCMAKE_BUILD_TYPE</span><span class="op">=</span>Release</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cmake</span> <span class="at">--build</span> build <span class="at">-j</span><span class="va">$(</span><span class="fu">nproc</span><span class="va">)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
-<section id="python-tests" class="level2">
-<h2 class="anchored" data-anchor-id="python-tests">Python Tests</h2>
-<p>Located in <code>tests/</code>. Run with <code>pytest</code>.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pytest</span> tests/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="test-checklist" class="level1">
+<h1>Test checklist</h1>
+<p>Before closing a GitHub issue, run <strong>all applicable</strong> suites:</p>
+<section id="trajectory-tracking-controllers" class="level2">
+<h2 class="anchored" data-anchor-id="trajectory-tracking-controllers">Trajectory tracking controllers</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run tracking</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li>Automated assert: RMSE &lt; 2.0 m (regression guard).</li>
+<li>Paper baseline: ~0.69 m — report the actual value in the closing comment.</li>
+</ul>
+</section>
+<section id="core-kernel-config" class="level2">
+<h2 class="anchored" data-anchor-id="core-kernel-config">Core kernel / config</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/tests/mppi_gtest</span>      <span class="co"># must report [  PASSED  ]</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/tests/i_mppi_gtest</span>    <span class="co"># must report [  PASSED  ]</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/tests/pendulum_test</span>   <span class="co"># prints PASSED</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/tests/bspline_test</span>    <span class="co"># prints PASSED</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/tests/fsmi_unit_test</span>  <span class="co"># prints PASSED</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="fsmi-occupancy-grid" class="level2">
+<h2 class="anchored" data-anchor-id="fsmi-occupancy-grid">FSMI / occupancy grid</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/tests/fsmi_unit_test</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="python-bindings" class="level2">
+<h2 class="anchored" data-anchor-id="python-bindings">Python bindings</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run install</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run test</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
-<section id="adding-new-dynamics" class="level1">
-<h1>Adding New Dynamics</h1>
-<p>To add a new hardcoded system (non-JIT):</p>
-<ol type="1">
-<li><p><strong>Create Header</strong>: Create <code>include/mppi/instantiations/my_system.cuh</code>.</p></li>
-<li><p><strong>Define Struct</strong>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode cpp code-with-copy"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> MySystem <span class="op">{</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">static</span> <span class="kw">constexpr</span> <span class="dt">int</span> STATE_DIM <span class="op">=</span> <span class="op">...;</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">static</span> <span class="kw">constexpr</span> <span class="dt">int</span> CONTROL_DIM <span class="op">=</span> <span class="op">...;</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    __device__ <span class="dt">void</span> step<span class="op">(</span><span class="at">const</span> <span class="dt">float</span><span class="op">*</span> x<span class="op">,</span> <span class="at">const</span> <span class="dt">float</span><span class="op">*</span> u<span class="op">,</span> <span class="dt">float</span><span class="op">*</span> x_next<span class="op">,</span> <span class="dt">float</span> dt<span class="op">)</span> <span class="at">const</span> <span class="op">{</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Implementation</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Create Test</strong>: Add <code>src/my_system_test.cu</code> to verify it.</p></li>
-<li><p><strong>Bind (Optional)</strong>: Update <code>bindings/bindings.cu</code> to expose <code>MPPIController&lt;MySystem, Cost&gt;</code> to Python.</p></li>
-</ol>
+<section id="adding-new-dynamics-and-cost" class="level1">
+<h1>Adding new dynamics and cost</h1>
+<p>Every controller is templated on a <code>(Dynamics, Cost)</code> pair — you need both.</p>
+<section id="dynamics" class="level2">
+<h2 class="anchored" data-anchor-id="dynamics">1. Dynamics</h2>
+<p>Create <code>include/mppi/instantiations/my_system.cuh</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode cpp code-with-copy"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> MySystem <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">static</span> <span class="kw">constexpr</span> <span class="dt">int</span> STATE_DIM   <span class="op">=</span> …<span class="op">;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">static</span> <span class="kw">constexpr</span> <span class="dt">int</span> CONTROL_DIM <span class="op">=</span> …<span class="op">;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* Called once per GPU thread, inside the rollout loop. */</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    __device__ <span class="dt">void</span> step<span class="op">(</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>        <span class="at">const</span> <span class="dt">float</span><span class="op">*</span> x<span class="op">,</span> <span class="at">const</span> <span class="dt">float</span><span class="op">*</span> u<span class="op">,</span> <span class="dt">float</span><span class="op">*</span> x_next<span class="op">,</span> <span class="dt">float</span> dt</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">)</span> <span class="at">const</span> <span class="op">{</span> … <span class="op">}</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="cost" class="level2">
+<h2 class="anchored" data-anchor-id="cost">2. Cost</h2>
+<p>In the same header (or a separate one):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode cpp code-with-copy"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> MyCost <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* Running cost at each timestep. */</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    __device__ <span class="dt">float</span> compute<span class="op">(</span><span class="at">const</span> <span class="dt">float</span><span class="op">*</span> x<span class="op">,</span> <span class="at">const</span> <span class="dt">float</span><span class="op">*</span> u<span class="op">,</span> <span class="dt">int</span> t<span class="op">)</span> <span class="at">const</span> <span class="op">{</span> … <span class="op">}</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* Terminal cost at the end of the horizon. */</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    __device__ <span class="dt">float</span> terminal<span class="op">(</span><span class="at">const</span> <span class="dt">float</span><span class="op">*</span> x<span class="op">)</span> <span class="at">const</span> <span class="op">{</span> … <span class="op">}</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="test" class="level2">
+<h2 class="anchored" data-anchor-id="test">3. Test</h2>
+<p>Add <code>tests/my_system_gtest.cu</code> and register it in <code>tests/CMakeLists.txt</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode cmake code-with-copy"><code class="sourceCode cmake"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">add_executable</span>(<span class="bn">my_system_gtest</span> my_system_gtest.cu)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">target_link_libraries</span>(<span class="bn">my_system_gtest</span> cuda_mppi_lib <span class="bn">GTest::gtest_main</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="python-binding-optional" class="level2">
+<h2 class="anchored" data-anchor-id="python-binding-optional">4. Python binding (optional)</h2>
+<p>In <code>bindings/bindings.cu</code>, instantiate the controller and expose it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode cpp code-with-copy"><code class="sourceCode cpp"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">using</span> MyCtrl <span class="op">=</span> MPPIController<span class="op">&lt;</span>MySystem<span class="op">,</span> MyCost<span class="op">&gt;;</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>nb<span class="op">::</span><span class="va">class_</span><span class="op">&lt;</span>MyCtrl<span class="op">&gt;(</span>m<span class="op">,</span> <span class="st">"MySystemMPPI"</span><span class="op">)</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span>def<span class="op">(</span>nb<span class="op">::</span>init<span class="op">&lt;</span>MPPIConfig<span class="op">,</span> MySystem<span class="op">,</span> MyCost<span class="op">&gt;())</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span>def<span class="op">(</span><span class="st">"compute"</span><span class="op">,</span>     <span class="op">&amp;</span>MyCtrl<span class="op">::</span>compute<span class="op">)</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span>def<span class="op">(</span><span class="st">"get_action"</span><span class="op">,</span>  <span class="op">&amp;</span>MyCtrl<span class="op">::</span>get_action<span class="op">)</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span>def<span class="op">(</span><span class="st">"shift"</span><span class="op">,</span>       <span class="op">&amp;</span>MyCtrl<span class="op">::</span>shift<span class="op">);</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
 </section>
 <section id="coding-conventions" class="level1">
-<h1>Coding Conventions</h1>
+<h1>Coding conventions</h1>
 <ul>
-<li><strong>CUDA</strong>: Use <code>__device__</code> for core logic. Avoid <code>malloc</code> in kernels.</li>
-<li><strong>Style</strong>: Follow standard C++17 modern practices.</li>
-<li><strong>Commits</strong>: Use <a href="https://www.conventionalcommits.org/">Conventional Commits</a>.</li>
+<li><strong>CUDA</strong>: <code>__device__</code> for rollout-path code. No <code>malloc</code>/<code>new</code> inside kernels.</li>
+<li><strong>Error handling</strong>: wrap all <code>cudaMalloc</code>, <code>cudaMemcpy</code>, <code>curandGenerate*</code> calls with <code>HANDLE_ERROR(...)</code>.</li>
+<li><strong>Sync</strong>: call <code>cudaDeviceSynchronize()</code> after every kernel launch whose result is read on the host.</li>
+<li><strong>Comments</strong>: use codedoc-style block comments (<code>/* … */</code>) for prose; <code>//</code> for short inline notes.</li>
+<li><strong>Commits</strong>: <a href="https://www.conventionalcommits.org/">Conventional Commits</a> — <code>feat</code>, <code>fix</code>, <code>perf</code>, <code>refactor</code>, <code>test</code>, <code>docs</code>, <code>chore</code>.</li>
 </ul>
 
 

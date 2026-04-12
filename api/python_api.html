@@ -2,13 +2,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.8.27">
+<meta name="generator" content="quarto-1.9.37">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
 <title>Python API Reference – cuda-mppi</title>
 <style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
 div.columns{display: flex; gap: min(4vw, 1.5em);}
@@ -67,15 +70,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <meta name="quarto:offset" content="../">
 <script src="../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
 <script src="../site_libs/quarto-html/popper.min.js"></script>
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-0b802d246790ecd80511443f8ae76f95.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-312b66175a1f02a035263df1a0cb5ed4.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -105,7 +107,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 }</script>
 
   <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
 <script type="text/javascript">
 const typesetMath = (el) => {
@@ -250,7 +252,7 @@ window.Quarto = {
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../controllers/controllers.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Reactive MPPI Controllers: Theory &amp; Variants</span></a>
+ <span class="menu-text">Controllers: Theory &amp; Variants</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -311,12 +313,35 @@ window.Quarto = {
   <ul class="collapse">
   <li><a href="#mppiconfig" id="toc-mppiconfig" class="nav-link" data-scroll-target="#mppiconfig"><code>MPPIConfig</code></a></li>
   </ul></li>
+  <li><a href="#dynamics" id="toc-dynamics" class="nav-link" data-scroll-target="#dynamics">Dynamics</a>
+  <ul class="collapse">
+  <li><a href="#quadrotordynamics" id="toc-quadrotordynamics" class="nav-link" data-scroll-target="#quadrotordynamics"><code>QuadrotorDynamics</code></a></li>
+  <li><a href="#doubleintegrator-doubleintegrator3d" id="toc-doubleintegrator-doubleintegrator3d" class="nav-link" data-scroll-target="#doubleintegrator-doubleintegrator3d"><code>DoubleIntegrator</code> / <code>DoubleIntegrator3D</code></a></li>
+  </ul></li>
+  <li><a href="#costs" id="toc-costs" class="nav-link" data-scroll-target="#costs">Costs</a>
+  <ul class="collapse">
+  <li><a href="#trackingcost" id="toc-trackingcost" class="nav-link" data-scroll-target="#trackingcost"><code>TrackingCost</code></a></li>
+  <li><a href="#informativecost" id="toc-informativecost" class="nav-link" data-scroll-target="#informativecost"><code>InformativeCost</code></a></li>
+  </ul></li>
+  <li><a href="#occupancy-grids" id="toc-occupancy-grids" class="nav-link" data-scroll-target="#occupancy-grids">Occupancy Grids</a>
+  <ul class="collapse">
+  <li><a href="#occupancygrid2d" id="toc-occupancygrid2d" class="nav-link" data-scroll-target="#occupancygrid2d"><code>OccupancyGrid2D</code></a></li>
+  <li><a href="#occupancygrid3d" id="toc-occupancygrid3d" class="nav-link" data-scroll-target="#occupancygrid3d"><code>OccupancyGrid3D</code></a></li>
+  <li><a href="#infofield" id="toc-infofield" class="nav-link" data-scroll-target="#infofield"><code>InfoField</code></a></li>
+  </ul></li>
   <li><a href="#controllers" id="toc-controllers" class="nav-link" data-scroll-target="#controllers">Controllers</a>
   <ul class="collapse">
-  <li><a href="#doubleintegratormppi" id="toc-doubleintegratormppi" class="nav-link" data-scroll-target="#doubleintegratormppi"><code>DoubleIntegratorMPPI</code></a></li>
+  <li><a href="#quadrotormppi" id="toc-quadrotormppi" class="nav-link" data-scroll-target="#quadrotormppi"><code>QuadrotorMPPI</code></a></li>
+  <li><a href="#quadrotorkmppi" id="toc-quadrotorkmppi" class="nav-link" data-scroll-target="#quadrotorkmppi"><code>QuadrotorKMPPI</code></a></li>
+  <li><a href="#quadrotorsmppi" id="toc-quadrotorsmppi" class="nav-link" data-scroll-target="#quadrotorsmppi"><code>QuadrotorSMPPI</code></a></li>
+  <li><a href="#quadrotorimppi" id="toc-quadrotorimppi" class="nav-link" data-scroll-target="#quadrotorimppi"><code>QuadrotorIMPPI</code></a></li>
+  <li><a href="#di3imppi" id="toc-di3imppi" class="nav-link" data-scroll-target="#di3imppi"><code>DI3IMPPI</code></a></li>
   <li><a href="#jitmppicontroller" id="toc-jitmppicontroller" class="nav-link" data-scroll-target="#jitmppicontroller"><code>JITMPPIController</code></a></li>
   </ul></li>
-  <li><a href="#note-on-bindings" id="toc-note-on-bindings" class="nav-link" data-scroll-target="#note-on-bindings">Note on Bindings</a></li>
+  <li><a href="#planning" id="toc-planning" class="nav-link" data-scroll-target="#planning">Planning</a>
+  <ul class="collapse">
+  <li><a href="#trajectorygenerator" id="toc-trajectorygenerator" class="nav-link" data-scroll-target="#trajectorygenerator"><code>TrajectoryGenerator</code></a></li>
+  </ul></li>
   </ul></li>
   </ul>
 </nav>
@@ -345,76 +370,220 @@ window.Quarto = {
 
 <section id="module-cuda_mppi" class="level1">
 <h1>Module: <code>cuda_mppi</code></h1>
-<p>The <code>cuda_mppi</code> module provides Python bindings for the core CUDA controllers.</p>
+<p>Install via:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pixi</span> run install    <span class="co"># recommended</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># or: pip install --no-build-isolation -e .</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
 <section id="configuration" class="level2">
 <h2 class="anchored" data-anchor-id="configuration">Configuration</h2>
 <section id="mppiconfig" class="level3">
 <h3 class="anchored" data-anchor-id="mppiconfig"><code>MPPIConfig</code></h3>
-<p>The configuration struct for all controllers.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MPPIConfig:</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, </span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>                 num_samples: <span class="bu">int</span>, </span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>                 horizon: <span class="bu">int</span>, </span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>                 nx: <span class="bu">int</span>, </span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>                 nu: <span class="bu">int</span>, </span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>                 lambda_: <span class="bu">float</span>, </span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>                 dt: <span class="bu">float</span>, </span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>                 u_scale: <span class="bu">float</span>, </span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>                 w_action_seq_cost: <span class="bu">float</span>, </span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>                 num_support_pts: <span class="bu">int</span>):</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<ul>
-<li><code>num_samples</code> (<span class="math inline">\(K\)</span>): Number of parallel rollouts.</li>
-<li><code>horizon</code> (<span class="math inline">\(T\)</span>): Number of timesteps per rollout.</li>
-<li><code>nx</code>: State dimension.</li>
-<li><code>nu</code>: Control dimension.</li>
-<li><code>lambda_</code>: Temperature parameter (inverse sensitivity).</li>
-<li><code>dt</code>: Integration timestep (seconds).</li>
-<li><code>u_scale</code>: Scaling factor for control inputs (or noise variance).</li>
-<li><code>w_action_seq_cost</code>: Weight for smoothness cost (SMPPI).</li>
-<li><code>num_support_pts</code>: Number of knots for kernel approximation (KMPPI).</li>
-</ul>
+<p>Shared configuration struct passed to every controller.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cfg <span class="op">=</span> cuda_mppi.MPPIConfig(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    num_samples<span class="op">=</span><span class="dv">900</span>,     <span class="co"># K: parallel rollouts</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    horizon<span class="op">=</span><span class="dv">40</span>,          <span class="co"># T: timesteps per rollout</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    nx<span class="op">=</span><span class="dv">13</span>,               <span class="co"># state dimension</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    nu<span class="op">=</span><span class="dv">4</span>,                <span class="co"># control dimension</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    lambda_<span class="op">=</span><span class="fl">1000.0</span>,      <span class="co"># temperature (inverse sensitivity)</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    dt<span class="op">=</span><span class="fl">0.02</span>,             <span class="co"># integration timestep (s)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    u_scale<span class="op">=</span><span class="fl">1.0</span>,         <span class="co"># legacy uniform control scale (prefer set_control_sigma)</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    w_action_seq_cost<span class="op">=</span><span class="fl">0.0</span>,  <span class="co"># S-MPPI smoothness cost weight</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    num_support_pts<span class="op">=</span><span class="dv">0</span>,   <span class="co"># K-MPPI: number of RBF support points (0 = disabled)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    lambda_info<span class="op">=</span><span class="fl">0.0</span>,     <span class="co"># I-MPPI: information gain weight</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    alpha<span class="op">=</span><span class="fl">0.0</span>,           <span class="co"># I-MPPI: baseline mixing coefficient</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>cfg.set_control_sigma([<span class="fl">2.0</span>, <span class="fl">0.5</span>, <span class="fl">0.5</span>, <span class="fl">0.3</span>])  <span class="co"># per-channel noise std (overrides u_scale)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
+<section id="dynamics" class="level2">
+<h2 class="anchored" data-anchor-id="dynamics">Dynamics</h2>
+<section id="quadrotordynamics" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotordynamics"><code>QuadrotorDynamics</code></h3>
+<p>13-DOF quadrotor in NED/FRD frame. State: <code>[x, y, z, vx, vy, vz, qw, qx, qy, qz, ωx, ωy, ωz]</code>. Control: <code>[thrust, roll_rate, pitch_rate, yaw_rate]</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>dyn <span class="op">=</span> cuda_mppi.QuadrotorDynamics()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>dyn.mass      <span class="op">=</span> <span class="fl">2.0</span>    <span class="co"># kg</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>dyn.gravity   <span class="op">=</span> <span class="fl">9.81</span>   <span class="co"># m/s²</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>dyn.tau_omega <span class="op">=</span> <span class="fl">0.05</span>   <span class="co"># body-rate time constant (s)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>x_next <span class="op">=</span> dyn.step(state, action, dt)  <span class="co"># host-side RK4 step</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="doubleintegrator-doubleintegrator3d" class="level3">
+<h3 class="anchored" data-anchor-id="doubleintegrator-doubleintegrator3d"><code>DoubleIntegrator</code> / <code>DoubleIntegrator3D</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>di <span class="op">=</span> cuda_mppi.DoubleIntegrator()    <span class="co"># 4-DOF: [x, y, vx, vy], control: [ax, ay]</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>di3 <span class="op">=</span> cuda_mppi.DoubleIntegrator3D() <span class="co"># 6-DOF: [x, y, z, vx, vy, vz], control: [ax, ay, az]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
+<section id="costs" class="level2">
+<h2 class="anchored" data-anchor-id="costs">Costs</h2>
+<section id="trackingcost" class="level3">
+<h3 class="anchored" data-anchor-id="trackingcost"><code>TrackingCost</code></h3>
+<p>Quadratic reference-tracking cost for the quadrotor.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>cost <span class="op">=</span> cuda_mppi.TrackingCost()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>cost.set_Q_pos([<span class="fl">5e3</span>, <span class="fl">5e3</span>, <span class="fl">5e3</span>])              <span class="co"># position weights</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>cost.set_Q_vel([<span class="fl">4e1</span>, <span class="fl">4e1</span>, <span class="fl">4e1</span>])              <span class="co"># velocity weights</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>cost.Q_quat <span class="op">=</span> <span class="fl">2e1</span>                             <span class="co"># quaternion attitude weight</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>cost.set_Q_omega([<span class="fl">2e1</span>, <span class="fl">2e1</span>, <span class="fl">2e1</span>])            <span class="co"># angular rate weights</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>cost.set_R([<span class="fl">2e-2</span>, <span class="fl">2e-1</span>, <span class="fl">2e-1</span>, <span class="fl">2e-1</span>])        <span class="co"># control effort weights</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>cost.set_R_delta([<span class="fl">1e-3</span>, <span class="fl">1e-2</span>, <span class="fl">1e-2</span>, <span class="fl">1e-2</span>])  <span class="co"># control rate weights</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>cost.terminal_weight <span class="op">=</span> <span class="fl">10.0</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>cost.set_hover_pos([<span class="fl">0.0</span>, <span class="fl">0.0</span>, <span class="op">-</span><span class="fl">2.5</span>])         <span class="co"># hover fallback position (NED)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="informativecost" class="level3">
+<h3 class="anchored" data-anchor-id="informativecost"><code>InformativeCost</code></h3>
+<p>Multi-objective cost combining tracking, information gain (FSMI), and collision avoidance.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>cost <span class="op">=</span> cuda_mppi.InformativeCost()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>cost.lambda_info       <span class="op">=</span> <span class="fl">1.0</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>cost.lambda_local      <span class="op">=</span> <span class="fl">1.0</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>cost.collision_penalty <span class="op">=</span> <span class="fl">100.0</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>cost.target_weight     <span class="op">=</span> <span class="fl">10.0</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>cost.use_grid_3d       <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>cost.bound_x_min <span class="op">=</span> <span class="op">-</span><span class="fl">10.0</span><span class="op">;</span> cost.bound_x_max <span class="op">=</span> <span class="fl">10.0</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>cost.bound_y_min <span class="op">=</span> <span class="op">-</span><span class="fl">10.0</span><span class="op">;</span> cost.bound_y_max <span class="op">=</span> <span class="fl">10.0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
+<section id="occupancy-grids" class="level2">
+<h2 class="anchored" data-anchor-id="occupancy-grids">Occupancy Grids</h2>
+<section id="occupancygrid2d" class="level3">
+<h3 class="anchored" data-anchor-id="occupancygrid2d"><code>OccupancyGrid2D</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>grid <span class="op">=</span> cuda_mppi.OccupancyGrid2D(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="dv">200</span>, height<span class="op">=</span><span class="dv">200</span>, resolution<span class="op">=</span><span class="fl">0.1</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    origin_x<span class="op">=-</span><span class="fl">10.0</span>, origin_y<span class="op">=-</span><span class="fl">10.0</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>grid.upload(np_array)                              <span class="co"># float32 (height, width)</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>grid.update_fov(x, y, yaw, fov_range, fov_angle)  <span class="co"># ray-cast sensor update</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>arr <span class="op">=</span> grid.download()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="occupancygrid3d" class="level3">
+<h3 class="anchored" data-anchor-id="occupancygrid3d"><code>OccupancyGrid3D</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>grid <span class="op">=</span> cuda_mppi.OccupancyGrid3D(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="dv">100</span>, height<span class="op">=</span><span class="dv">100</span>, depth<span class="op">=</span><span class="dv">50</span>, resolution<span class="op">=</span><span class="fl">0.2</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    origin_x<span class="op">=-</span><span class="fl">10.0</span>, origin_y<span class="op">=-</span><span class="fl">10.0</span>, origin_z<span class="op">=</span><span class="fl">0.0</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>grid.upload(np_array)   <span class="co"># float32 (depth, height, width)</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>arr <span class="op">=</span> grid.download()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="infofield" class="level3">
+<h3 class="anchored" data-anchor-id="infofield"><code>InfoField</code></h3>
+<p>GPU-accelerated FSMI information field.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>field <span class="op">=</span> cuda_mppi.InfoField(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    Nx<span class="op">=</span><span class="dv">200</span>, Ny<span class="op">=</span><span class="dv">200</span>, resolution<span class="op">=</span><span class="fl">0.1</span>, origin_x<span class="op">=-</span><span class="fl">10.0</span>, origin_y<span class="op">=-</span><span class="fl">10.0</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>field.compute(grid, uav_x, uav_y, sensor_range, sensor_fov)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>info_map <span class="op">=</span> field.download()   <span class="co"># float32 (Ny, Nx)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
 </section>
 </section>
 <section id="controllers" class="level2">
 <h2 class="anchored" data-anchor-id="controllers">Controllers</h2>
-<section id="doubleintegratormppi" class="level3">
-<h3 class="anchored" data-anchor-id="doubleintegratormppi"><code>DoubleIntegratorMPPI</code></h3>
-<p>A specialized controller for a 4D double integrator system (<span class="math inline">\(x, y, v_x, v_y\)</span>).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DoubleIntegratorMPPI:</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, config: MPPIConfig):</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        ...</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> compute(<span class="va">self</span>, state: numpy.ndarray) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        <span class="co">"""Compute the optimal control for the given state (async)."""</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> get_action(<span class="va">self</span>) <span class="op">-&gt;</span> numpy.ndarray:</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        <span class="co">"""Retrieve the first action of the optimal sequence."""</span></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> shift(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="co">"""Shift the nominal trajectory forward by one step."""</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>All controllers share a common interface:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 38%">
+<col style="width: 61%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compute(state)</code></td>
+<td>Run <span class="math inline">\(K\)</span> GPU rollouts and compute optimal action (synchronous — blocks until done)</td>
+</tr>
+<tr class="even">
+<td><code>get_action()</code></td>
+<td>Return first action of the optimal sequence</td>
+</tr>
+<tr class="odd">
+<td><code>shift()</code></td>
+<td>Shift nominal sequence forward by one step</td>
+</tr>
+<tr class="even">
+<td><code>set_nominal_control(u)</code></td>
+<td>Broadcast a control vector across the full horizon</td>
+</tr>
+<tr class="odd">
+<td><code>set_applied_control(u)</code></td>
+<td>Set the control actually applied at the last step</td>
+</tr>
+<tr class="even">
+<td><code>set_cost(cost)</code></td>
+<td>Swap the cost object</td>
+</tr>
+<tr class="odd">
+<td><code>set_state_reference(ref, horizon)</code></td>
+<td>Upload flattened reference trajectory <code>(T × nx,)</code></td>
+</tr>
+</tbody>
+</table>
+<section id="quadrotormppi" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotormppi"><code>QuadrotorMPPI</code></h3>
+<p>Standard MPPI for the 13-DOF quadrotor.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.QuadrotorMPPI(config, dynamics, cost)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="quadrotorkmppi" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotorkmppi"><code>QuadrotorKMPPI</code></h3>
+<p>Kernel MPPI — RBF-parameterised noise in support-point space, ~6× faster per step than standard MPPI.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>config.num_support_pts <span class="op">=</span> <span class="dv">10</span>   <span class="co"># M ≪ T RBF knots</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.QuadrotorKMPPI(config, dynamics, cost)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="quadrotorsmppi" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotorsmppi"><code>QuadrotorSMPPI</code></h3>
+<p>Smooth MPPI — velocity-space noise integration.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.QuadrotorSMPPI(config, dynamics, cost)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<blockquote class="blockquote">
+<p><strong>⚠️ Known issue:</strong> Effective exploration collapses to near-zero for small <span class="math inline">\(\Delta t\)</span> because <code>integrate_actions_kernel</code> scales noise by <span class="math inline">\(\Delta t\)</span>. Tracking diverges until <a href="https://github.com/riccardo-enr/cuda-mppi/issues/24">issue #24</a> is fixed.</p>
+</blockquote>
+</section>
+<section id="quadrotorimppi" class="level3">
+<h3 class="anchored" data-anchor-id="quadrotorimppi"><code>QuadrotorIMPPI</code></h3>
+<p>Informative MPPI — biased sampling toward reference + information gain. Extends the standard MPPI interface with:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.QuadrotorIMPPI(config, dynamics, cost)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>ctrl.set_reference_trajectory(ref_flat, horizon)</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>ctrl.update_cost_grid(grid_2d)</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>ctrl.update_cost_grid_3d(grid_3d)</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>ctrl.update_cost_info_field(info_field)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="di3imppi" class="level3">
+<h3 class="anchored" data-anchor-id="di3imppi"><code>DI3IMPPI</code></h3>
+<p>I-MPPI for the 3D double integrator (<code>DoubleIntegrator3D</code> + <code>InformativeCost3D</code>).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.DI3IMPPI(config, dynamics_3d, cost_3d)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="jitmppicontroller" class="level3">
 <h3 class="anchored" data-anchor-id="jitmppicontroller"><code>JITMPPIController</code></h3>
-<p>The generic controller that compiles user-defined dynamics/costs at runtime.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> JITMPPIController:</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, </span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>                 config: MPPIConfig, </span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>                 dynamics_code: <span class="bu">str</span>, </span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>                 cost_code: <span class="bu">str</span>, </span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>                 include_paths: List[<span class="bu">str</span>]):</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        ...</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> compute(<span class="va">self</span>, state: numpy.ndarray) <span class="op">-&gt;</span> <span class="va">None</span>: ...</span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> get_action(<span class="va">self</span>) <span class="op">-&gt;</span> numpy.ndarray: ...</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> shift(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>: ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Generic controller with runtime-compiled dynamics and cost (NVRTC). Write your dynamics and cost in C++/CUDA strings; the library compiles a <code>.cubin</code> at startup.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.JITMPPIController(</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    config,</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    dynamics_code<span class="op">=</span><span class="st">"__device__ void step(...) { ... }"</span>,</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    cost_code<span class="op">=</span><span class="st">"__device__ float compute(...) { ... }"</span>,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    include_paths<span class="op">=</span>[<span class="st">"/path/to/cuda-mppi/include"</span>],</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>ctrl.compute(state)</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>action    <span class="op">=</span> ctrl.get_action()</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>nom_traj  <span class="op">=</span> ctrl.get_nominal_trajectory()  <span class="co"># (T × nu) numpy array</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
 </section>
 </section>
-<section id="note-on-bindings" class="level2">
-<h2 class="anchored" data-anchor-id="note-on-bindings">Note on Bindings</h2>
-<p>Currently, the <code>DoubleIntegratorMPPI</code> and <code>JITMPPIController</code> are the primary classes exposed. Bindings for generalized SMPPI and KMPPI are present in the codebase but may require enabling in <code>bindings/bindings.cu</code>.</p>
+<section id="planning" class="level2">
+<h2 class="anchored" data-anchor-id="planning">Planning</h2>
+<section id="trajectorygenerator" class="level3">
+<h3 class="anchored" data-anchor-id="trajectorygenerator"><code>TrajectoryGenerator</code></h3>
+<p>Layer-2 informative path planner that generates waypoint sequences maximising information gain subject to dynamic feasibility.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>tg_cfg <span class="op">=</span> cuda_mppi.TrajectoryGeneratorConfig()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>tg_cfg.horizon <span class="op">=</span> <span class="dv">20</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>tg_cfg.num_samples <span class="op">=</span> <span class="dv">500</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>tg <span class="op">=</span> cuda_mppi.TrajectoryGenerator(tg_cfg, mppi_ctrl)</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> tg.plan(state, info_field)</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>waypoints <span class="op">=</span> result.trajectory   <span class="co"># (T × 3) numpy array</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
+</section>
 </section>
 </section>
 
