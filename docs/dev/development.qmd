@@ -64,10 +64,13 @@ pixi run install
 pixi run test
 ```
 
-# Adding new dynamics
+# Adding new dynamics and cost
 
-1. Create `include/mppi/instantiations/my_system.cuh`.
-2. Define the struct:
+Every controller is templated on a `(Dynamics, Cost)` pair — you need both.
+
+## 1. Dynamics
+
+Create `include/mppi/instantiations/my_system.cuh`:
 
 ```cpp
 struct MySystem {
@@ -81,8 +84,41 @@ struct MySystem {
 };
 ```
 
-3. Add a GTest in `tests/my_system_gtest.cu` and register it in `tests/CMakeLists.txt`.
-4. Optionally expose via nanobind in `bindings/bindings.cu`.
+## 2. Cost
+
+In the same header (or a separate one):
+
+```cpp
+struct MyCost {
+    /* Running cost at each timestep. */
+    __device__ float compute(const float* x, const float* u, int t) const { … }
+
+    /* Terminal cost at the end of the horizon. */
+    __device__ float terminal(const float* x) const { … }
+};
+```
+
+## 3. Test
+
+Add `tests/my_system_gtest.cu` and register it in `tests/CMakeLists.txt`:
+
+```cmake
+add_executable(my_system_gtest my_system_gtest.cu)
+target_link_libraries(my_system_gtest cuda_mppi_lib GTest::gtest_main)
+```
+
+## 4. Python binding (optional)
+
+In `bindings/bindings.cu`, instantiate the controller and expose it:
+
+```cpp
+using MyCtrl = MPPIController<MySystem, MyCost>;
+nb::class_<MyCtrl>(m, "MySystemMPPI")
+    .def(nb::init<MPPIConfig, MySystem, MyCost>())
+    .def("compute",     &MyCtrl::compute)
+    .def("get_action",  &MyCtrl::get_action)
+    .def("shift",       &MyCtrl::shift);
+```
 
 # Coding conventions
 

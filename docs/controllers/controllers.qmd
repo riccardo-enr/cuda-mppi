@@ -142,10 +142,10 @@ low-dimensional latent space.
 
 ### Characteristics
 
-*   Guaranteed smooth trajectories by kernel bandwidth $\ell$.
+*   Guaranteed smooth trajectories — bandwidth $\ell$ is derived automatically from support-point spacing.
 *   ~6× faster per step than standard MPPI for the same $K$ (fewer noise DOFs).
 *   Slightly higher RMSE than MPPI on lemniscate tracking (0.79 m vs 0.60 m, 30 s trial).
-*   Requires tuning of $M$ (`num_support_pts`) and kernel length-scale.
+*   Only user-tunable knob: `num_support_pts` $M$ (more points → finer-grained control, slower).
 
 ---
 

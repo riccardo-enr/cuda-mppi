@@ -21,16 +21,19 @@ Shared configuration struct passed to every controller.
 
 ```python
 cfg = cuda_mppi.MPPIConfig(
-    num_samples=900,   # K: parallel rollouts
-    horizon=40,        # T: timesteps per rollout
-    nx=13,             # state dimension
-    nu=4,              # control dimension
-    lambda_=1000.0,    # temperature (inverse sensitivity)
-    dt=0.02,           # integration timestep (s)
+    num_samples=900,     # K: parallel rollouts
+    horizon=40,          # T: timesteps per rollout
+    nx=13,               # state dimension
+    nu=4,                # control dimension
+    lambda_=1000.0,      # temperature (inverse sensitivity)
+    dt=0.02,             # integration timestep (s)
+    u_scale=1.0,         # legacy uniform control scale (prefer set_control_sigma)
+    w_action_seq_cost=0.0,  # S-MPPI smoothness cost weight
+    num_support_pts=0,   # K-MPPI: number of RBF support points (0 = disabled)
+    lambda_info=0.0,     # I-MPPI: information gain weight
+    alpha=0.0,           # I-MPPI: baseline mixing coefficient
 )
-cfg.set_control_sigma([2.0, 0.5, 0.5, 0.3])  # per-channel noise std
-cfg.num_support_pts = 10    # K-MPPI: number of RBF support points
-cfg.w_action_seq_cost = 1.0 # S-MPPI: smoothness cost weight
+cfg.set_control_sigma([2.0, 0.5, 0.5, 0.3])  # per-channel noise std (overrides u_scale)
 ```
 
 ---
@@ -141,7 +144,7 @@ All controllers share a common interface:
 
 | Method | Description |
 |--------|-------------|
-| `compute(state)` | Run $K$ GPU rollouts and compute optimal action |
+| `compute(state)` | Run $K$ GPU rollouts and compute optimal action (synchronous — blocks until done) |
 | `get_action()` | Return first action of the optimal sequence |
 | `shift()` | Shift nominal sequence forward by one step |
 | `set_nominal_control(u)` | Broadcast a control vector across the full horizon |
@@ -214,7 +217,8 @@ ctrl = cuda_mppi.JITMPPIController(
     include_paths=["/path/to/cuda-mppi/include"],
 )
 ctrl.compute(state)
-action = ctrl.get_action()
+action    = ctrl.get_action()
+nom_traj  = ctrl.get_nominal_trajectory()  # (T × nu) numpy array
 ```
 
 ---
