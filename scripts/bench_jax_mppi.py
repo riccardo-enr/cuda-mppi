@@ -35,7 +35,7 @@ GRAVITY = 9.81
 TAU_OMEGA = 0.05
 DT = 0.02
 HORIZON = 40
-LAMBDA = 1000.0
+LAMBDA = 100.0
 SIGMA = np.array([2.0, 0.5, 0.5, 0.3], dtype=np.float32)
 
 U_MIN = np.array([0.0, -10.0, -10.0, -10.0], dtype=np.float32)
@@ -63,13 +63,23 @@ def _quat_rotate(q: jax.Array, v: jax.Array) -> jax.Array:
     (lines 68-87).
     """
     qw, qx, qy, qz = q[0], q[1], q[2], q[3]
-    R = jnp.array(
+    R = jnp.array([
         [
-            [1 - 2 * (qy**2 + qz**2), 2 * (qx * qy - qw * qz), 2 * (qx * qz + qw * qy)],
-            [2 * (qx * qy + qw * qz), 1 - 2 * (qx**2 + qz**2), 2 * (qy * qz - qw * qx)],
-            [2 * (qx * qz - qw * qy), 2 * (qy * qz + qw * qx), 1 - 2 * (qx**2 + qy**2)],
-        ]
-    )
+            1 - 2 * (qy**2 + qz**2),
+            2 * (qx * qy - qw * qz),
+            2 * (qx * qz + qw * qy),
+        ],
+        [
+            2 * (qx * qy + qw * qz),
+            1 - 2 * (qx**2 + qz**2),
+            2 * (qy * qz - qw * qx),
+        ],
+        [
+            2 * (qx * qz - qw * qy),
+            2 * (qy * qz + qw * qx),
+            1 - 2 * (qx**2 + qy**2),
+        ],
+    ])
     return R @ v
 
 
@@ -296,11 +306,181 @@ def _lemniscate_ref(
 
 
 # ---------------------------------------------------------------------------
+# Closed-loop tracking (validates correctness of the JAX implementation)
+# ---------------------------------------------------------------------------
+
+
+def run_tracking(
+    num_samples: int = 900,
+    sim_time: float = 30.0,
+    plot: bool = False,
+) -> float:
+    """Run JAX MPPI in closed-loop on the lemniscate and return RMSE.
+
+    Mirrors test_quadrotor_tracking.py so results are directly comparable.
+    Plant dynamics are propagated with the same host-side RK4 as the CUDA test
+    (cuda_mppi.QuadrotorDynamics.step).
+    """
+    n_steps = int(sim_time / DT)
+    t_vec = np.arange(n_steps) * DT
+
+    # Pre-compute full reference trajectory
+    ref_full = _lemniscate_ref(n_steps, t0=0.0, dt=DT)
+
+    # Build JIT-compiled MPPI step
+    mppi_step = make_mppi_step(num_samples, HORIZON, LAMBDA)
+
+    # Host dynamics for plant propagation (same C++ RK4 as CUDA test)
+    dynamics = cuda_mppi.QuadrotorDynamics()
+    dynamics.mass = MASS
+    dynamics.gravity = GRAVITY
+    dynamics.tau_omega = TAU_OMEGA
+
+    # Nominal control initialised at hover
+    hover_thrust = MASS * GRAVITY
+    u_nom = (
+        jnp.zeros((HORIZON, 4), dtype=jnp.float32).at[:, 0].set(hover_thrust)
+    )
+    # Match the CUDA controller: the previous applied control buffer starts at
+    # zero and is only overwritten after the first action is produced.
+    u_prev = jnp.zeros(4, dtype=jnp.float32)
+    key = jax.random.PRNGKey(0)
+
+    # Initial state — same as test_quadrotor_tracking.py
+    state = np.zeros(13, dtype=np.float32)
+    state[0] = 2.0
+    state[1] = 2.0
+    state[2] = 0.0
+    state[6] = 1.0
+
+    positions = np.zeros((n_steps, 3), dtype=np.float32)
+    controls = np.zeros((n_steps, 4), dtype=np.float32)
+    comp_times = np.zeros(n_steps, dtype=np.float64)
+
+    print(
+        f"Running JAX MPPI tracking: K={num_samples}, N={HORIZON}, "
+        f"dt={DT}, λ={LAMBDA}, T_sim={sim_time}s"
+    )
+
+    for k in range(n_steps):
+        positions[k] = state[:3]
+
+        # Build sliding reference window
+        ref_end = min(k + HORIZON, n_steps)
+        pos_window = ref_full[k:ref_end]
+        if len(pos_window) < HORIZON:
+            pad = np.tile(pos_window[-1:], (HORIZON - len(pos_window), 1))
+            pos_window = np.concatenate([pos_window, pad], axis=0)
+        state_ref = np.zeros((HORIZON, 13), dtype=np.float32)
+        state_ref[:, :3] = pos_window[:, :3]
+        state_ref[:, 6] = 1.0  # identity quaternion reference
+
+        # Shift nominal sequence by one step (drop first, repeat last)
+        u_nom = jnp.concatenate([u_nom[1:], u_nom[-1:]], axis=0)
+
+        # MPPI compute
+        key, subkey = jax.random.split(key)
+        x_j = jnp.array(state)
+        ref_j = jnp.array(state_ref)
+
+        t0 = time.perf_counter()
+        u_nom = mppi_step(subkey, x_j, u_nom, u_prev, ref_j)
+        jax.block_until_ready(u_nom)
+        comp_times[k] = (time.perf_counter() - t0) * 1e3
+
+        action = np.array(u_nom[0])
+        controls[k] = action
+        u_prev = u_nom[0]
+
+        # Propagate plant with host C++ RK4
+        state = dynamics.step(state, action, DT)
+
+        if (k + 1) % 500 == 0 or k == 0:
+            pos_err = np.linalg.norm(positions[k] - ref_full[k, :3])
+            print(
+                f"  step {k + 1:5d}/{n_steps}  |  "
+                f"pos_err={pos_err:.3f} m  |  "
+                f"comp={comp_times[k]:.2f} ms"
+            )
+
+    errors = positions - ref_full[:, :3]
+    rmse_xyz = np.sqrt(np.mean(errors**2, axis=0))
+    rmse_total = np.sqrt(np.mean(np.sum(errors**2, axis=1)))
+
+    print("\n--- Results ---")
+    print(f"RMSE  X: {rmse_xyz[0]:.4f} m")
+    print(f"RMSE  Y: {rmse_xyz[1]:.4f} m")
+    print(f"RMSE  Z: {rmse_xyz[2]:.4f} m")
+    print(f"RMSE total: {rmse_total:.4f} m")
+    print(
+        f"Compute time — mean: {np.mean(comp_times):.2f} ms, "
+        f"median: {np.median(comp_times):.2f} ms, "
+        f"p95: {np.percentile(comp_times, 95):.2f} ms"
+    )
+
+    if plot:
+        _plot_tracking(
+            t_vec, positions, ref_full[:, :3], controls, comp_times, rmse_total
+        )
+
+    return rmse_total
+
+
+def _plot_tracking(t, pos, ref, ctrl, comp_t, rmse):
+    import matplotlib.pyplot as plt
+    import scienceplots  # noqa: F401
+
+    plt.style.use(["science", "ieee"])
+    plt.rcParams["figure.dpi"] = 150
+
+    fig = plt.figure(figsize=(3.3, 3.0))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot(ref[:, 0], ref[:, 1], -ref[:, 2], "r--", lw=0.8, label="Reference")
+    ax.plot(pos[:, 0], pos[:, 1], -pos[:, 2], "b-", lw=0.6, label="JAX MPPI")
+    ax.scatter(
+        *pos[0, :2], -pos[0, 2], c="green", s=20, zorder=5, label="Start"
+    )
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.set_zlabel("Z (m)")
+    ax.set_title(f"JAX MPPI Lemniscate Tracking — RMSE: {rmse:.3f} m")
+    ax.legend(fontsize=6)
+    fig.savefig("jax_tracking_3d.png", dpi=300, bbox_inches="tight")
+
+    labels = ["X (m)", "Y (m)", "Z (m)"]
+    fig, axes = plt.subplots(3, 1, figsize=(3.3, 4.0), constrained_layout=True)
+    for i, (ax, lab) in enumerate(zip(axes, labels)):
+        ref_plot = ref[:, i] if i < 2 else -ref[:, i]
+        pos_plot = pos[:, i] if i < 2 else -pos[:, i]
+        ax.plot(t, ref_plot, "r--", lw=0.8, label="Ref")
+        ax.plot(t, pos_plot, "b-", lw=0.6, label="JAX MPPI")
+        ax.set_ylabel(lab)
+        if i == 0:
+            ax.legend(fontsize=6)
+    axes[-1].set_xlabel("Time (s)")
+    fig.suptitle("JAX MPPI Position Tracking")
+    fig.savefig("jax_tracking_axes.png", dpi=300, bbox_inches="tight")
+
+    fig, ax = plt.subplots(figsize=(3.3, 2.0), constrained_layout=True)
+    ax.plot(t, comp_t, "b-", lw=0.4, alpha=0.6)
+    ax.axhline(20.0, color="r", ls="--", lw=0.8, label="20 ms budget")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Compute time (ms)")
+    ax.set_title("JAX MPPI Computation Time")
+    ax.legend(fontsize=6)
+    fig.savefig("jax_tracking_compute.png", dpi=300, bbox_inches="tight")
+
+    plt.show()
+
+
+# ---------------------------------------------------------------------------
 # Benchmark helpers
 # ---------------------------------------------------------------------------
 
 
-def _bench_cuda(num_samples: int, n_iter: int, x0: np.ndarray, ref: np.ndarray) -> np.ndarray:
+def _bench_cuda(
+    num_samples: int, n_iter: int, x0: np.ndarray, ref: np.ndarray
+) -> np.ndarray:
     """Time n_iter CUDA MPPI iterations, return array of elapsed ms."""
     config = cuda_mppi.MPPIConfig(
         num_samples=num_samples,
@@ -343,7 +523,9 @@ def _bench_cuda(num_samples: int, n_iter: int, x0: np.ndarray, ref: np.ndarray) 
     return times
 
 
-def _bench_jax(num_samples: int, n_iter: int, x0: np.ndarray, ref: np.ndarray) -> np.ndarray:
+def _bench_jax(
+    num_samples: int, n_iter: int, x0: np.ndarray, ref: np.ndarray
+) -> np.ndarray:
     """Time n_iter JAX MPPI iterations, return array of elapsed ms."""
     mppi_step = make_mppi_step(num_samples, HORIZON, LAMBDA)
 
@@ -385,14 +567,18 @@ def bench(
 
     # Fixed state: lemniscate starting pose
     x0 = np.zeros(13, dtype=np.float32)
-    x0[0] = 5.0   # px on lemniscate
+    x0[0] = 5.0  # px on lemniscate
     x0[2] = -2.5  # pz (NED altitude)
-    x0[6] = 1.0   # qw
+    x0[6] = 1.0  # qw
 
     ref = _lemniscate_ref(HORIZON)
 
-    print(f"\nBenchmark: JAX vs CUDA MPPI  (N={HORIZON}, dt={DT}, λ={LAMBDA}, n_iter={n_iter})\n")
-    print(f"{'K':>6}  {'CUDA mean':>10}  {'CUDA std':>9}  {'JAX mean':>9}  {'JAX std':>8}  {'Speedup':>8}")
+    print(
+        f"\nBenchmark: JAX vs CUDA MPPI  (N={HORIZON}, dt={DT}, λ={LAMBDA}, n_iter={n_iter})\n"
+    )
+    print(
+        f"{'K':>6}  {'CUDA mean':>10}  {'CUDA std':>9}  {'JAX mean':>9}  {'JAX std':>8}  {'Speedup':>8}"
+    )
     print("-" * 62)
 
     cuda_means, jax_means, speedups = [], [], []
@@ -476,21 +662,53 @@ def _plot(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="JAX vs CUDA MPPI benchmark")
+    parser = argparse.ArgumentParser(
+        description="JAX MPPI: tracking validation and speed benchmark"
+    )
+    parser.add_argument(
+        "--track",
+        action="store_true",
+        help="Run closed-loop lemniscate tracking (correctness check)",
+    )
     parser.add_argument(
         "--samples",
+        "-K",
+        type=int,
+        default=900,
+        help="Number of MPPI samples for --track (default: 900)",
+    )
+    parser.add_argument(
+        "--time",
+        "-T",
+        type=float,
+        default=30.0,
+        help="Simulation time in seconds for --track (default: 30)",
+    )
+    parser.add_argument(
+        "--bench-samples",
         nargs="+",
         type=int,
         default=[256, 512, 1024, 2048, 4096],
-        help="Sample counts to benchmark",
+        help="Sample counts for speed benchmark (default: 256 512 1024 2048 4096)",
     )
     parser.add_argument(
         "--n-iter",
         type=int,
         default=100,
-        help="Timed iterations per sample count (default: 100)",
+        help="Timed iterations per sample count for benchmark (default: 100)",
     )
-    parser.add_argument("--plot", action="store_true", help="Save and show latency/speedup plot")
+    parser.add_argument(
+        "--plot", action="store_true", help="Save and show plots"
+    )
     args = parser.parse_args()
 
-    bench(sample_counts=args.samples, n_iter=args.n_iter, plot=args.plot)
+    if args.track:
+        rmse = run_tracking(
+            num_samples=args.samples, sim_time=args.time, plot=args.plot
+        )
+        assert rmse < 2.0, f"RMSE {rmse:.3f} m exceeds 2.0 m threshold"
+        print("\n✓ JAX tracking test passed.")
+    else:
+        bench(
+            sample_counts=args.bench_samples, n_iter=args.n_iter, plot=args.plot
+        )
