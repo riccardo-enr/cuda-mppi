@@ -64,6 +64,7 @@ def run_tracking(
     sim_time: float = 30.0,
     mass: float = 2.0,
     plot: bool = False,
+    diagnose: bool = False,
 ):
     """Run closed-loop MPPI trajectory tracking and compute RMSE."""
 
@@ -121,6 +122,9 @@ def run_tracking(
     positions = np.zeros((n_steps, 3), dtype=np.float32)
     controls = np.zeros((n_steps, 4), dtype=np.float32)
     comp_times = np.zeros(n_steps, dtype=np.float64)
+    cost_stds: list[float] = []
+    cost_means: list[float] = []
+    cost_mins: list[float] = []
 
     # --- Simulation ---
     print(
@@ -140,8 +144,8 @@ def run_tracking(
             pad = np.tile(pos_window[-1:], (horizon - len(pos_window), 1))
             pos_window = np.concatenate([pos_window, pad], axis=0)
         state_ref = np.zeros((horizon, 13), dtype=np.float32)
-        state_ref[:, :3] = pos_window          # position
-        state_ref[:, 6] = 1.0                  # qw = 1 (level attitude)
+        state_ref[:, :3] = pos_window  # position
+        state_ref[:, 6] = 1.0  # qw = 1 (level attitude)
         controller.set_state_reference(state_ref.flatten(), horizon)
 
         # Feed back previous action for rate-of-change cost
@@ -156,6 +160,12 @@ def run_tracking(
 
         action = controller.get_action()
         controls[k] = action
+
+        if diagnose and k % 10 == 0:
+            costs = np.array(controller.get_last_costs())
+            cost_stds.append(costs.std())
+            cost_means.append(costs.mean())
+            cost_mins.append(costs.min())
 
         # Propagate plant dynamics (host-side RK4)
         state = dynamics.step(state, action, dt)
@@ -184,6 +194,39 @@ def run_tracking(
         f"median: {np.median(comp_times):.2f} ms, "
         f"p95: {np.percentile(comp_times, 95):.2f} ms"
     )
+
+    if diagnose and cost_stds:
+        c_std_med = float(np.median(cost_stds))
+        print("\n--- Cost diagnostics ---")
+        print(
+            f"  rollout cost std  — median: {c_std_med:.1f},  mean: {np.mean(cost_stds):.1f}"
+        )
+        print(f"  rollout cost mean — median: {np.median(cost_means):.1f}")
+        print(f"  rollout cost min  — median: {np.median(cost_mins):.1f}")
+        print()
+        print("  c_std is how much rollouts differ; target c_std/λ in [1, 10].")
+        print(f"  Current λ={lam}  →  c_std/λ = {c_std_med / lam:.2f}")
+        print()
+        magnitude = 10 ** int(np.log10(max(c_std_med, 1)))
+        candidates = sorted(
+            set(
+                int(magnitude * f)
+                for f in [0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0]
+                if int(magnitude * f) > 0
+            )
+        )
+        best_lam, best_score = lam, -1.0
+        for lam_c in candidates:
+            ratio = c_std_med / lam_c
+            good = 1.0 <= ratio <= 10.0
+            flag = "  ← good" if good else ""
+            score = 1.0 / abs(ratio - 3.0) if good else 0.0  # prefer ratio≈3
+            if good and score > best_score:
+                best_score, best_lam = score, lam_c
+            print(f"  λ = {lam_c:>8}  |  c_std/λ = {ratio:6.2f}{flag}")
+        print(
+            f"\n  Suggested λ ≈ {best_lam}  (c_std/λ = {c_std_med / best_lam:.2f})"
+        )
 
     if plot:
         _plot_results(
@@ -329,6 +372,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot", action="store_true", help="Show matplotlib plots"
     )
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="Print cost-scale statistics after the run to guide lambda tuning",
+    )
     args = parser.parse_args()
 
     rmse = run_tracking(
@@ -339,6 +387,7 @@ if __name__ == "__main__":
         sim_time=args.time,
         mass=args.mass,
         plot=args.plot,
+        diagnose=args.diagnose,
     )
 
     # Sanity check: paper achieved 0.69 m RMSE with full cost.

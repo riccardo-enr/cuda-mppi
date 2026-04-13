@@ -35,7 +35,7 @@ GRAVITY = 9.81
 TAU_OMEGA = 0.05
 DT = 0.02
 HORIZON = 40
-LAMBDA = 100.0
+LAMBDA = 10000.0
 SIGMA = np.array([2.0, 0.5, 0.5, 0.3], dtype=np.float32)
 
 U_MIN = np.array([0.0, -10.0, -10.0, -10.0], dtype=np.float32)
@@ -255,7 +255,8 @@ def make_mppi_step(num_samples: int, horizon: int, lam: float):
         u_nom: jax.Array,
         u_prev: jax.Array,
         state_ref: jax.Array,
-    ) -> jax.Array:
+    ) -> tuple[jax.Array, jax.Array]:
+        """Returns (u_nom_updated, costs) where costs has shape (K,)."""
         # Sample noise: (K, horizon, nu)
         eps = jax.random.normal(key, shape=(num_samples, horizon, len(SIGMA)))
 
@@ -271,9 +272,97 @@ def make_mppi_step(num_samples: int, horizon: int, lam: float):
         # delta_u[t,i] = sum_k w_k * eps_k[t,i] * sigma[i]
         delta_u = jnp.einsum("k,kti,i->ti", w, eps, sigma)
         u_nom_new = u_nom + delta_u
-        return u_nom_new
+        return u_nom_new, costs
 
     return mppi_step
+
+
+# ---------------------------------------------------------------------------
+# Cost-scale diagnostic (for lambda tuning)
+# ---------------------------------------------------------------------------
+
+
+def diagnose_costs(num_samples: int = 900) -> None:
+    """Sample one batch of rollouts and print cost statistics.
+
+    Per the tuning guide, the right λ satisfies:
+        0.1 < (costs.mean() - costs.min()) / lambda < 10
+
+    Run this before setting lambda_ to get the right order of magnitude.
+    """
+    sigma = jnp.array(SIGMA)
+    key = jax.random.PRNGKey(42)
+
+    x0 = np.zeros(13, dtype=np.float32)
+    x0[0] = 2.0
+    x0[1] = 2.0
+    x0[6] = 1.0  # same initial state as tracking test
+
+    ref = jnp.array(_lemniscate_ref(HORIZON))
+    u_nom = (
+        jnp.zeros((HORIZON, 4), dtype=jnp.float32).at[:, 0].set(MASS * GRAVITY)
+    )
+    u_prev = jnp.zeros(4, dtype=jnp.float32)
+    x0_j = jnp.array(x0)
+
+    eps = jax.random.normal(key, shape=(num_samples, HORIZON, len(SIGMA)))
+    costs = _rollout_batch(x0_j, u_nom, eps, sigma, ref, u_prev)
+    costs = np.array(costs)
+
+    c_min = costs.min()
+    c_max = costs.max()
+    c_mean = costs.mean()
+    c_std = costs.std()
+
+    print(f"\n--- Cost diagnostics (K={num_samples}, N={HORIZON}, dt={DT}) ---")
+    print(f"  min  : {c_min:.1f}")
+    print(f"  mean : {c_mean:.1f}")
+    print(f"  max  : {c_max:.1f}")
+    print(f"  std  : {c_std:.1f}  ← key quantity: how much rollouts differ")
+    print()
+    print(
+        "  Absolute cost level is irrelevant (dominated by constant initial error)."
+    )
+    print(
+        "  Target: c_std / λ in [1, 10]. Below 1 → uniform weights. Above 10 → collapse."
+    )
+    print()
+
+    # Sweep candidates around c_std
+    magnitude = 10 ** int(np.log10(max(c_std, 1)))
+    candidates = sorted(
+        set([
+            int(magnitude * f)
+            for f in [0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0]
+        ])
+    )
+    candidates = [c for c in candidates if c > 0]
+
+    best_lam, best_score = candidates[0], -1.0
+    for lam in candidates:
+        w = np.exp(-(costs - c_min) / lam)
+        w /= w.sum()
+        eff_k = 1.0 / np.sum(w**2)
+        ratio = c_std / lam
+        good = 1.0 <= ratio <= 10.0
+        flag = "  ← good" if good else ""
+        print(
+            f"  λ = {lam:>8}  |  c_std/λ = {ratio:6.2f}  |  eff. samples = {eff_k:6.1f} / {num_samples}{flag}"
+        )
+        # Prefer eff_k in 5–30% of K: sharp enough to be useful, not collapsed
+        score = (
+            eff_k
+            if (0.05 * num_samples <= eff_k <= 0.30 * num_samples)
+            else 0.0
+        )
+        if good and score > best_score:
+            best_score, best_lam = score, lam
+
+    print()
+    print(
+        f"  Suggested starting λ ≈ {best_lam}  (c_std/λ = {c_std / best_lam:.2f})"
+    )
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +403,7 @@ def run_tracking(
     num_samples: int = 900,
     sim_time: float = 30.0,
     plot: bool = False,
+    diagnose: bool = False,
 ) -> float:
     """Run JAX MPPI in closed-loop on the lemniscate and return RMSE.
 
@@ -356,6 +446,9 @@ def run_tracking(
     positions = np.zeros((n_steps, 3), dtype=np.float32)
     controls = np.zeros((n_steps, 4), dtype=np.float32)
     comp_times = np.zeros(n_steps, dtype=np.float64)
+    cost_stds: list[float] = []
+    cost_means: list[float] = []
+    cost_mins: list[float] = []
 
     print(
         f"Running JAX MPPI tracking: K={num_samples}, N={HORIZON}, "
@@ -384,9 +477,15 @@ def run_tracking(
         ref_j = jnp.array(state_ref)
 
         t0 = time.perf_counter()
-        u_nom = mppi_step(subkey, x_j, u_nom, u_prev, ref_j)
+        u_nom, costs = mppi_step(subkey, x_j, u_nom, u_prev, ref_j)
         jax.block_until_ready(u_nom)
         comp_times[k] = (time.perf_counter() - t0) * 1e3
+
+        if diagnose and k % 10 == 0:
+            c = np.array(costs)
+            cost_stds.append(c.std())
+            cost_means.append(c.mean())
+            cost_mins.append(c.min())
 
         action = np.array(u_nom[0])
         controls[k] = action
@@ -418,12 +517,348 @@ def run_tracking(
         f"p95: {np.percentile(comp_times, 95):.2f} ms"
     )
 
+    if diagnose and cost_stds:
+        c_std_med = float(np.median(cost_stds))
+        print("\n--- Cost diagnostics ---")
+        print(
+            f"  rollout cost std  — median: {c_std_med:.1f},  mean: {np.mean(cost_stds):.1f}"
+        )
+        print(f"  rollout cost mean — median: {np.median(cost_means):.1f}")
+        print(f"  rollout cost min  — median: {np.median(cost_mins):.1f}")
+        print()
+        print("  c_std is how much rollouts differ; target c_std/λ in [1, 10].")
+        print(f"  Current λ={LAMBDA}  →  c_std/λ = {c_std_med / LAMBDA:.2f}")
+        print()
+        magnitude = 10 ** int(np.log10(max(c_std_med, 1)))
+        candidates = sorted(
+            set(
+                int(magnitude * f)
+                for f in [0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0]
+                if int(magnitude * f) > 0
+            )
+        )
+        best_lam, best_score = LAMBDA, -1.0
+        for lam_c in candidates:
+            ratio = c_std_med / lam_c
+            good = 1.0 <= ratio <= 10.0
+            flag = "  ← good" if good else ""
+            score = 1.0 / abs(ratio - 3.0) if good else 0.0
+            if good and score > best_score:
+                best_score, best_lam = score, lam_c
+            print(f"  λ = {lam_c:>8}  |  c_std/λ = {ratio:6.2f}{flag}")
+        print(
+            f"\n  Suggested λ ≈ {best_lam}  (c_std/λ = {c_std_med / best_lam:.2f})"
+        )
+
     if plot:
         _plot_tracking(
             t_vec, positions, ref_full[:, :3], controls, comp_times, rmse_total
         )
 
     return rmse_total
+
+
+def run_tracking_cuda(
+    num_samples: int = 900,
+    sim_time: float = 30.0,
+) -> tuple[float, np.ndarray]:
+    """Run CUDA MPPI closed-loop on the lemniscate.
+
+    Uses identical parameters to run_tracking() so results are directly
+    comparable.  Returns (rmse_total, comp_times_ms).
+    """
+    import time as _time
+
+    n_steps = int(sim_time / DT)
+    t_vec = np.arange(n_steps) * DT  # noqa: F841
+
+    ref_full = _lemniscate_ref(n_steps, t0=0.0, dt=DT)
+
+    config = cuda_mppi.MPPIConfig(
+        num_samples=num_samples,
+        horizon=HORIZON,
+        nx=13,
+        nu=4,
+        lambda_=LAMBDA,
+        dt=DT,
+    )
+    config.set_control_sigma(SIGMA.tolist())
+
+    dynamics = cuda_mppi.QuadrotorDynamics()
+    dynamics.mass = MASS
+    dynamics.gravity = GRAVITY
+    dynamics.tau_omega = TAU_OMEGA
+
+    cost = cuda_mppi.TrackingCost()
+    cost.set_Q_pos(Q_POS.tolist())
+    cost.set_Q_vel(Q_VEL.tolist())
+    cost.Q_quat = float(Q_QUAT)
+    cost.set_Q_omega(Q_OMEGA.tolist())
+    cost.set_R(R_CTRL.tolist())
+    cost.set_R_delta(R_DELTA.tolist())
+    cost.terminal_weight = TERMINAL_WEIGHT
+
+    controller = cuda_mppi.QuadrotorMPPI(config, dynamics, cost)
+    hover_thrust = MASS * GRAVITY
+    u_hover = np.array([hover_thrust, 0.0, 0.0, 0.0], dtype=np.float32)
+    controller.set_nominal_control(u_hover)
+
+    state = np.zeros(13, dtype=np.float32)
+    state[0] = 2.0
+    state[1] = 2.0
+    state[2] = 0.0
+    state[6] = 1.0
+
+    positions = np.zeros((n_steps, 3), dtype=np.float32)
+    controls = np.zeros((n_steps, 4), dtype=np.float32)
+    comp_times = np.zeros(n_steps, dtype=np.float64)
+
+    print(
+        f"Running CUDA MPPI tracking: K={num_samples}, N={HORIZON}, "
+        f"dt={DT}, λ={LAMBDA}, T_sim={sim_time}s"
+    )
+
+    for k in range(n_steps):
+        positions[k] = state[:3]
+
+        ref_end = min(k + HORIZON, n_steps)
+        pos_window = ref_full[k:ref_end]
+        if len(pos_window) < HORIZON:
+            pad = np.tile(pos_window[-1:], (HORIZON - len(pos_window), 1))
+            pos_window = np.concatenate([pos_window, pad], axis=0)
+        state_ref = np.zeros((HORIZON, 13), dtype=np.float32)
+        state_ref[:, :3] = pos_window[:, :3]
+        state_ref[:, 6] = 1.0
+        controller.set_state_reference(state_ref.flatten(), HORIZON)
+
+        if k > 0:
+            controller.set_applied_control(controls[k - 1])
+
+        controller.shift()
+        t0 = _time.perf_counter()
+        controller.compute(state)
+        comp_times[k] = (_time.perf_counter() - t0) * 1e3
+
+        action = controller.get_action()
+        controls[k] = action
+        state = dynamics.step(state, action, DT)
+
+        if (k + 1) % 500 == 0 or k == 0:
+            pos_err = np.linalg.norm(positions[k] - ref_full[k, :3])
+            print(
+                f"  step {k + 1:5d}/{n_steps}  |  "
+                f"pos_err={pos_err:.3f} m  |  "
+                f"comp={comp_times[k]:.2f} ms"
+            )
+
+    errors = positions - ref_full[:, :3]
+    rmse_total = float(np.sqrt(np.mean(np.sum(errors**2, axis=1))))
+    return rmse_total, comp_times, positions, ref_full[:, :3]
+
+
+# ---------------------------------------------------------------------------
+# Head-to-head comparison
+# ---------------------------------------------------------------------------
+
+
+def compare(
+    num_samples: int = 900,
+    sim_time: float = 30.0,
+    bench_samples: list[int] | None = None,
+    n_iter: int = 500,
+    plot: bool = False,
+) -> None:
+    """Run JAX and CUDA MPPI side-by-side: tracking accuracy + speed."""
+    if bench_samples is None:
+        bench_samples = [256, 512, 1024, 2048, 4096]
+
+    # ── 1. Tracking accuracy ──────────────────────────────────────────────
+    print("=" * 60)
+    print("TRACKING ACCURACY")
+    print("=" * 60)
+
+    rmse_cuda, comp_cuda, pos_cuda, ref = run_tracking_cuda(
+        num_samples=num_samples, sim_time=sim_time
+    )
+    print()
+    rmse_jax, comp_jax, pos_jax, _ = _run_tracking_with_times(
+        num_samples=num_samples, sim_time=sim_time
+    )
+
+    print()
+    print("=" * 60)
+    print(f"{'':20s}  {'CUDA':>10}  {'JAX':>10}")
+    print("-" * 44)
+    print(f"{'RMSE total (m)':20s}  {rmse_cuda:>10.4f}  {rmse_jax:>10.4f}")
+    print(
+        f"{'Compute mean (ms)':20s}  "
+        f"{np.mean(comp_cuda):>10.2f}  {np.mean(comp_jax):>10.2f}"
+    )
+    print(
+        f"{'Compute median (ms)':20s}  "
+        f"{np.median(comp_cuda):>10.2f}  {np.median(comp_jax):>10.2f}"
+    )
+    print(
+        f"{'Compute p95 (ms)':20s}  "
+        f"{np.percentile(comp_cuda, 95):>10.2f}  {np.percentile(comp_jax, 95):>10.2f}"
+    )
+    print("=" * 60)
+
+    # ── 2. Speed benchmark ────────────────────────────────────────────────
+    print()
+    print("=" * 60)
+    print("SPEED BENCHMARK")
+    print("=" * 60)
+    bench(sample_counts=bench_samples, n_iter=n_iter, plot=False)
+
+    if plot:
+        _plot_compare(
+            sim_time, comp_cuda, comp_jax, rmse_cuda, rmse_jax,
+            pos_cuda, pos_jax, ref,
+        )
+
+
+def _run_tracking_with_times(
+    num_samples: int = 900,
+    sim_time: float = 30.0,
+) -> tuple[float, np.ndarray]:
+    """Like run_tracking() but returns (rmse, comp_times_ms) without plotting."""
+    n_steps = int(sim_time / DT)
+
+    ref_full = _lemniscate_ref(n_steps, t0=0.0, dt=DT)
+    mppi_step = make_mppi_step(num_samples, HORIZON, LAMBDA)
+
+    dynamics = cuda_mppi.QuadrotorDynamics()
+    dynamics.mass = MASS
+    dynamics.gravity = GRAVITY
+    dynamics.tau_omega = TAU_OMEGA
+
+    hover_thrust = MASS * GRAVITY
+    u_nom = (
+        jnp.zeros((HORIZON, 4), dtype=jnp.float32).at[:, 0].set(hover_thrust)
+    )
+    u_prev = jnp.zeros(4, dtype=jnp.float32)
+    key = jax.random.PRNGKey(0)
+
+    state = np.zeros(13, dtype=np.float32)
+    state[0] = 2.0
+    state[1] = 2.0
+    state[6] = 1.0
+
+    positions = np.zeros((n_steps, 3), dtype=np.float32)
+    controls = np.zeros((n_steps, 4), dtype=np.float32)
+    comp_times = np.zeros(n_steps, dtype=np.float64)
+
+    print(
+        f"Running JAX MPPI tracking: K={num_samples}, N={HORIZON}, "
+        f"dt={DT}, λ={LAMBDA}, T_sim={sim_time}s"
+    )
+
+    for k in range(n_steps):
+        positions[k] = state[:3]
+
+        ref_end = min(k + HORIZON, n_steps)
+        pos_window = ref_full[k:ref_end]
+        if len(pos_window) < HORIZON:
+            pad = np.tile(pos_window[-1:], (HORIZON - len(pos_window), 1))
+            pos_window = np.concatenate([pos_window, pad], axis=0)
+        state_ref = np.zeros((HORIZON, 13), dtype=np.float32)
+        state_ref[:, :3] = pos_window[:, :3]
+        state_ref[:, 6] = 1.0
+
+        u_nom = jnp.concatenate([u_nom[1:], u_nom[-1:]], axis=0)
+
+        key, subkey = jax.random.split(key)
+        x_j = jnp.array(state)
+        ref_j = jnp.array(state_ref)
+
+        t0 = time.perf_counter()
+        u_nom, _ = mppi_step(subkey, x_j, u_nom, u_prev, ref_j)
+        jax.block_until_ready(u_nom)
+        comp_times[k] = (time.perf_counter() - t0) * 1e3
+
+        action = np.array(u_nom[0])
+        controls[k] = action
+        u_prev = u_nom[0]
+        state = dynamics.step(state, action, DT)
+
+        if (k + 1) % 500 == 0 or k == 0:
+            pos_err = np.linalg.norm(positions[k] - ref_full[k, :3])
+            print(
+                f"  step {k + 1:5d}/{n_steps}  |  "
+                f"pos_err={pos_err:.3f} m  |  "
+                f"comp={comp_times[k]:.2f} ms"
+            )
+
+    errors = positions - ref_full[:, :3]
+    rmse_total = float(np.sqrt(np.mean(np.sum(errors**2, axis=1))))
+    return rmse_total, comp_times, positions, ref_full[:, :3]
+
+
+def _plot_compare(
+    sim_time, comp_cuda, comp_jax, rmse_cuda, rmse_jax,
+    pos_cuda, pos_jax, ref,
+):
+    import matplotlib.pyplot as plt
+    import scienceplots  # noqa: F401
+
+    plt.style.use(["science", "ieee"])
+    plt.rcParams["figure.dpi"] = 150
+
+    n_steps = len(comp_cuda)
+    t = np.arange(n_steps) * DT
+
+    # ── Figure 1: 3D trajectory comparison (side-by-side) ────────────────
+    fig3d = plt.figure(figsize=(7.16, 3.3))
+    titles = [
+        f"CUDA MPPI — RMSE {rmse_cuda:.3f} m",
+        f"JAX MPPI  — RMSE {rmse_jax:.3f} m",
+    ]
+    for col, (pos, title) in enumerate(
+        zip([pos_cuda, pos_jax], titles), start=1
+    ):
+        ax = fig3d.add_subplot(1, 2, col, projection="3d")
+        ax.plot(
+            ref[:, 0], ref[:, 1], -ref[:, 2],
+            color="tab:orange", lw=0.7, label="Reference",
+        )
+        ax.plot(
+            pos[:, 0], pos[:, 1], -pos[:, 2],
+            color="tab:blue", lw=0.6, label="Tracked",
+        )
+        ax.scatter(
+            pos[0, 0], pos[0, 1], -pos[0, 2],
+            c="green", s=15, zorder=5, label="Start",
+        )
+        ax.set_xlabel("X (m)", fontsize=6)
+        ax.set_ylabel("Y (m)", fontsize=6)
+        ax.set_zlabel("Z (m)", fontsize=6)
+        ax.tick_params(labelsize=5)
+        ax.set_title(title, fontsize=7)
+        ax.legend(fontsize=5)
+    fig3d.suptitle("Lemniscate Tracking — JAX vs CUDA MPPI", fontsize=8)
+    fig3d.savefig("compare_trajectory_3d.png", dpi=300, bbox_inches="tight")
+    print("Saved compare_trajectory_3d.png")
+
+    # ── Figure 2: latency ─────────────────────────────────────────────────
+    C_CUDA = "#E07B39"   # medium orange
+    C_JAX  = "#87CEEB"   # light blue (sky blue)
+
+    fig, ax = plt.subplots(figsize=(3.3, 2.5), constrained_layout=True)
+
+    p99 = max(np.percentile(comp_cuda, 99), np.percentile(comp_jax, 99))
+    ax.plot(t, comp_cuda, color=C_CUDA, lw=0.4, alpha=0.8, label="CUDA")
+    ax.plot(t, comp_jax,  color=C_JAX,  lw=0.4, alpha=0.8, label="JAX")
+    ax.axhline(20.0, color="k", ls="--", lw=0.6, label="20 ms budget")
+    ax.set_ylim(0, p99)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Compute time (ms)")
+    ax.set_title("Compute Latency")
+    ax.legend(fontsize=6)
+
+    fig.savefig("compare_latency.png", dpi=300, bbox_inches="tight")
+    print("Saved compare_latency.png")
+    plt.show()
 
 
 def _plot_tracking(t, pos, ref, ctrl, comp_t, rmse):
@@ -539,14 +974,14 @@ def _bench_jax(
     # warm-up (also triggers JIT compilation)
     for _ in range(5):
         key, subkey = jax.random.split(key)
-        u_nom = mppi_step(subkey, x0_j, u_nom, u_prev, ref_j)
+        u_nom, _ = mppi_step(subkey, x0_j, u_nom, u_prev, ref_j)
         jax.block_until_ready(u_nom)
 
     times = np.empty(n_iter)
     for i in range(n_iter):
         key, subkey = jax.random.split(key)
         t0 = time.perf_counter()
-        u_nom = mppi_step(subkey, x0_j, u_nom, u_prev, ref_j)
+        u_nom, _ = mppi_step(subkey, x0_j, u_nom, u_prev, ref_j)
         jax.block_until_ready(u_nom)
         times[i] = (time.perf_counter() - t0) * 1e3
     return times
@@ -559,7 +994,7 @@ def _bench_jax(
 
 def bench(
     sample_counts: list[int] | None = None,
-    n_iter: int = 100,
+    n_iter: int = 500,
     plot: bool = False,
 ) -> None:
     if sample_counts is None:
@@ -694,17 +1129,42 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-iter",
         type=int,
-        default=100,
-        help="Timed iterations per sample count for benchmark (default: 100)",
+        default=500,
+        help="Timed iterations per sample count for benchmark (default: 500)",
     )
     parser.add_argument(
         "--plot", action="store_true", help="Save and show plots"
     )
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="Print cost-scale statistics to guide lambda tuning, then exit",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Run JAX vs CUDA head-to-head: tracking accuracy + speed benchmark",
+    )
     args = parser.parse_args()
 
-    if args.track:
+    if args.diagnose:
+        diagnose_costs(num_samples=args.samples)
+        raise SystemExit(0)
+
+    if args.compare:
+        compare(
+            num_samples=args.samples,
+            sim_time=args.time,
+            bench_samples=args.bench_samples,
+            n_iter=args.n_iter,
+            plot=args.plot,
+        )
+    elif args.track:
         rmse = run_tracking(
-            num_samples=args.samples, sim_time=args.time, plot=args.plot
+            num_samples=args.samples,
+            sim_time=args.time,
+            plot=args.plot,
+            diagnose=args.diagnose,
         )
         assert rmse < 2.0, f"RMSE {rmse:.3f} m exceeds 2.0 m threshold"
         print("\n✓ JAX tracking test passed.")
