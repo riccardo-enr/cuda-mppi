@@ -17,6 +17,7 @@ _skbuild/
 *.dylib
 *.dll
 *.exe
+*.cache
 
 # CMake
 CMakeCache.txt
