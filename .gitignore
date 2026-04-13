@@ -1,6 +1,7 @@
 # Data files
 *.csv
 *.png
+!docs/_media/*.png
 
 # Build directories
 build/
@@ -17,6 +18,7 @@ _skbuild/
 *.dylib
 *.dll
 *.exe
+*.cache
 
 # CMake
 CMakeCache.txt

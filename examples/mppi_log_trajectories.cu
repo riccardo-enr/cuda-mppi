@@ -10,11 +10,11 @@
 #include "mppi/controllers/kmppi.cuh"
 #include "mppi/instantiations/double_integrator.cuh"
 #include "mppi/instantiations/point_mass_3d.cuh"
-#include "uav_control/mppi/acceleration_cost.cuh"
+#include "mppi/instantiations/acceleration_cost.cuh"
 
 using namespace mppi;
 using namespace mppi::instantiations;
-using uav_control::mppi::AccelerationTrackingCost;
+using mppi::instantiations::AccelerationTrackingCost;
 
 // RAII device ref trajectory (same as in mppi_gtest.cu)
 struct DeviceRefTrajectory {

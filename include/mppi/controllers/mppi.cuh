@@ -393,6 +393,23 @@ class MPPIController {
     return action;
   }
 
+  /**
+   * @brief Copy the per-sample rollout costs from the last `compute()` call.
+   *
+   * Useful for diagnosing λ: print mean/std of the returned vector and
+   * compare with your current `lambda_` setting.  Valid only after at least
+   * one call to `compute()`.
+   *
+   * @return Host vector of length $K$ containing the rollout costs.
+   */
+  Eigen::VectorXf get_last_costs() {
+    Eigen::VectorXf costs(config_.num_samples);
+    HANDLE_ERROR(cudaMemcpy(costs.data(), d_costs_,
+                            config_.num_samples * sizeof(float),
+                            cudaMemcpyDeviceToHost));
+    return costs;
+  }
+
  protected:
   MPPIConfig config_;  ///< MPPI hyperparameters.
   Dynamics dynamics_;  ///< Dynamics model instance.

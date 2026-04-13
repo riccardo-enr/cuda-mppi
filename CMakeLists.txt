@@ -72,8 +72,8 @@ install(EXPORT cuda_mppiTargets
 )
 
 # Cross-repo dependency (for tests/examples that use uav_control headers)
-set(UAV_CONTROL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../src/uav_control/include"
-    CACHE PATH "Path to uav_control headers")
+set(UAV_CONTROL_INCLUDE_DIR ""
+    CACHE PATH "Path to uav_control headers (unused — AccelerationTrackingCost now lives in-repo)")
 
 # Build options — disabled under scikit-build-core (pip install)
 if(DEFINED SKBUILD)

@@ -28,7 +28,22 @@ Lemniscate tracking, 30 s, K=900 rollouts, N=40, dt=0.02 s:
 |------------|----------|----------------|
 | MPPI       | 0.60     | 0.17 ms        |
 | K-MPPI     | 0.79     | 0.03 ms        |
-| S-MPPI     | — (⚠️ [#24](https://github.com/riccardo-enr/cuda-mppi/issues/24)) | — |
+| S-MPPI     | -- ([#24](https://github.com/riccardo-enr/cuda-mppi/issues/24)) | -- |
+
+### JAX vs CUDA MPPI
+
+Same algorithm, same GPU, different stack. Both run quadrotor lemniscate
+tracking with identical parameters.
+
+![3D trajectory comparison](_media/compare_trajectory_3d.png)
+
+![Compute latency](_media/compare_latency.png)
+
+Reproduce with:
+
+```bash
+pixi run python scripts/bench_jax_mppi.py --compare --plot
+```
 
 ## Documentation Structure
 
