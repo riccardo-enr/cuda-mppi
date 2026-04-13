@@ -23,6 +23,7 @@
 #include <cuda_runtime.h>
 #include <cmath>
 #include "mppi/core/map.cuh"
+#include "mppi/utils/cuda_utils.cuh"
 
 namespace mppi {
 
@@ -503,9 +504,9 @@ struct InfoField
   {
     Nx = nx;
     Ny = ny;
-    if (d_field) {cudaFree(d_field);}
-    cudaMalloc(&d_field, Nx * Ny * sizeof(float));
-    cudaMemset(d_field, 0, Nx * Ny * sizeof(float));
+    if (d_field) {HANDLE_ERROR(cudaFree(d_field));}
+    HANDLE_ERROR(cudaMalloc(&d_field, Nx * Ny * sizeof(float)));
+    HANDLE_ERROR(cudaMemset(d_field, 0, Nx * Ny * sizeof(float)));
   }
 
   /** @brief Free device memory. */
@@ -545,7 +546,8 @@ struct InfoField
     compute_info_field_kernel << < grid_dim, block >> > (
       grid, d_field, origin, res, Nx, Ny, ifc.n_yaw, fsmi_cfg
       );
-    cudaDeviceSynchronize();
+    HANDLE_ERROR(cudaGetLastError());
+    HANDLE_ERROR(cudaDeviceSynchronize());
   }
 
   /**
@@ -555,8 +557,8 @@ struct InfoField
   void download(float * h_field) const
   {
     if (d_field && h_field) {
-      cudaMemcpy(h_field, d_field, Nx * Ny * sizeof(float),
-                       cudaMemcpyDeviceToHost);
+      HANDLE_ERROR(cudaMemcpy(h_field, d_field, Nx * Ny * sizeof(float),
+                              cudaMemcpyDeviceToHost));
     }
   }
 
