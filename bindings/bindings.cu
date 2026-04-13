@@ -190,6 +190,7 @@ struct PyQuadrotorMPPI
 
   void compute(const Eigen::VectorXf & state) { controller.compute(state); }
   Eigen::VectorXf get_action() { return controller.get_action(); }
+  Eigen::VectorXf get_last_costs() { return controller.get_last_costs(); }
   void shift() { controller.shift(); }
 
   void set_nominal_control(const Eigen::VectorXf & u)
@@ -784,7 +785,9 @@ NB_MODULE(cuda_mppi, m) {
              "Replace the controller's cost function")
   .def("set_state_reference", &PyQuadrotorMPPI::set_state_reference,
              nb::arg("ref_flat"), nb::arg("horizon"),
-             "Upload full state reference (horizon*13) to device");
+             "Upload full state reference (horizon*13) to device")
+  .def("get_last_costs", &PyQuadrotorMPPI::get_last_costs,
+             "Return per-sample rollout costs [K] from last compute() call");
 
     // 7d. QuadrotorSMPPI (smooth MPPI, trajectory tracking wrapper)
     nb::class_<PyQuadrotorSMPPI>(m, "QuadrotorSMPPI")

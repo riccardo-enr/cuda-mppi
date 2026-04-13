@@ -9,7 +9,7 @@
 #include "mppi/instantiations/double_integrator.cuh"
 #include "mppi/instantiations/point_mass_3d.cuh"
 #include "mppi/instantiations/quadrotor.cuh"
-#include "uav_control/mppi/acceleration_cost.cuh"
+#include "mppi/instantiations/acceleration_cost.cuh"
 
 using namespace mppi;
 using namespace mppi::instantiations;
@@ -358,7 +358,7 @@ TEST(KMPPIDoubleIntegrator, Convergence) {
 // Trajectory Tracking Tests — AccelerationTrackingCost + PointMass3D
 // ===========================================================================
 
-using uav_control::mppi::AccelerationTrackingCost;
+using mppi::instantiations::AccelerationTrackingCost;
 
 // RAII helper for device reference trajectory memory
 struct DeviceRefTrajectory {
