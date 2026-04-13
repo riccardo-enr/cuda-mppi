@@ -185,24 +185,15 @@ def run_comparison(
         run_single("MPPI", ctrl_mppi, dynamics, horizon, dt, sim_time, mass)
     )
 
-    # S-MPPI is intentionally excluded from this comparison.
-    # integrate_actions_kernel scales velocity noise by dt (perturbed =
-    # action_seq + (vel + noise) * dt), which makes exploration ~ N(0, dt^2)
-    # regardless of control_sigma -- effectively zero for dt=0.02.
-    # Fixing this requires pre-scaling noise by 1/dt or adding a separate
-    # noise_sigma field to SMPPIConfig (tracked in issue #30).
-    print("\nS-MPPI: skipped (see issue #30 -- velocity noise scaling)")
-    results.append({
-        "name": "S-MPPI",
-        "rmse_total": float("nan"),
-        "rmse_xyz": np.full(3, float("nan")),
-        "comp_mean": float("nan"),
-        "comp_median": float("nan"),
-        "comp_p95": float("nan"),
-        "positions": np.zeros((int(sim_time / dt), 3)),
-        "controls": np.zeros((int(sim_time / dt), 4)),
-        "comp_times": np.zeros(int(sim_time / dt)),
-    })
+    # --- S-MPPI ---
+    config_smppi = make_config(
+        num_samples, horizon, dt, lam,
+        w_action_seq_cost=w_action_seq_cost,
+    )
+    ctrl_smppi = cuda_mppi.QuadrotorSMPPI(config_smppi, dynamics, cost)
+    results.append(
+        run_single("S-MPPI", ctrl_smppi, dynamics, horizon, dt, sim_time, mass)
+    )
 
     # --- K-MPPI ---
     config_kmppi = make_config(
@@ -305,15 +296,9 @@ def _plot_comparison(results, sim_time, dt):
 # ---------------------------------------------------------------------------
 
 def test_tracking_comparison():
-    """Verify active controllers track the lemniscate with RMSE < 2.0 m.
-
-    S-MPPI is skipped pending fix of velocity noise scaling (issue #30).
-    """
-    import math
+    """Verify all controllers track the lemniscate with RMSE < 2.0 m."""
     results = run_comparison(sim_time=5.0, plot=False)
     for r in results:
-        if math.isnan(r["rmse_total"]):
-            continue  # controller skipped (see issue #30 for S-MPPI)
         assert r["rmse_total"] < 2.0, (
             f"{r['name']} RMSE {r['rmse_total']:.3f} m exceeds 2.0 m threshold"
         )

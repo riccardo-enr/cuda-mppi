@@ -33,8 +33,17 @@ namespace mppi {
 /**
  * @brief CUDA kernel to integrate velocity perturbations into action sequences.
  *
- * For each sample $k$, computes:
- * $\mathbf{a}_k[t] = \mathbf{a}_{\text{nom}}[t] + (\mathbf{v}_{\text{nom}}[t] + \boldsymbol{\epsilon}_k[t]) \, \Delta t$
+ * Scales raw $\mathcal{N}(0,1)$ velocity noise by $\sigma_i / \Delta t$ before
+ * integration, so the resulting action perturbation has the intended magnitude:
+ *
+ * $$
+ *   \mathbf{a}_k[t] = \mathbf{a}_{\text{nom}}[t]
+ *     + \left(\mathbf{v}_{\text{nom}}[t]
+ *       + \boldsymbol{\epsilon}_k[t] \odot \frac{\boldsymbol{\sigma}}{\Delta t}
+ *     \right) \Delta t
+ *   = \mathbf{a}_{\text{nom}}[t] + \mathbf{v}_{\text{nom}}[t]\,\Delta t
+ *     + \boldsymbol{\epsilon}_k[t] \odot \boldsymbol{\sigma}
+ * $$
  *
  * One thread per sample; loops over $T$ and $n_u$.
  *
@@ -88,6 +97,85 @@ __global__ void smoothness_cost_kernel(
 );
 
 /**
+ * @brief Recompute the nominal action sequence from the nominal velocity.
+ *
+ * Anchors at $\mathbf{a}_{\text{nom}}[0]$ (unchanged) and integrates forward:
+ *
+ * $$
+ *   \mathbf{a}_{\text{nom}}[t] = \mathbf{a}_{\text{nom}}[0]
+ *     + \sum_{s=0}^{t-1} \mathbf{v}_{\text{nom}}[s] \, \Delta t, \quad t \ge 1
+ * $$
+ *
+ * Run with $n_u$ threads; each thread handles one control channel.
+ *
+ * @param a_nom  Nominal action sequence to update in-place $[T \times n_u]$.
+ * @param v_nom  Nominal velocity sequence $[T \times n_u]$.
+ * @param config MPPI configuration.
+ */
+__global__ void recompute_action_from_velocity_kernel(
+  float * a_nom,
+  const float * v_nom,
+  MPPIConfig config
+);
+
+/**
+ * @brief S-MPPI rollout kernel using pre-computed per-sample action sequences.
+ *
+ * Reads controls directly from `u_all[k,t,i]` without any sigma re-scaling.
+ * The perturbed actions are already fully-formed by `integrate_actions_kernel`
+ * (which applies the correct $\sigma / \Delta t$ velocity noise scaling).
+ *
+ * @tparam Dynamics  GPU-callable dynamics model.
+ * @tparam Cost      GPU-callable cost function.
+ * @param dynamics       Dynamics model.
+ * @param cost           Cost function.
+ * @param config         MPPI configuration.
+ * @param initial_state  Current state $[n_x]$.
+ * @param u_all          Pre-computed per-sample action sequences $[K \times T \times n_u]$.
+ * @param u_applied      Last applied control $[n_u]$ (for rate cost at $t=0$).
+ * @param costs          Per-sample total costs (output) $[K]$.
+ */
+template <typename Dynamics, typename Cost>
+__global__ void smppi_rollout_kernel(
+  Dynamics dynamics, Cost cost, MPPIConfig config,
+  const float * __restrict__ initial_state,
+  const float * __restrict__ u_all,
+  const float * __restrict__ u_applied,
+  float * __restrict__ costs)
+{
+  int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k >= config.num_samples) return;
+
+  constexpr int MAX_NX = 32;
+  constexpr int MAX_NU = 12;
+
+  float x[MAX_NX];
+  float u[MAX_NU];
+  float u_prev[MAX_NU];
+  float x_next[MAX_NX];
+
+  for (int i = 0; i < config.nx; ++i) x[i] = initial_state[i];
+  for (int i = 0; i < config.nu; ++i) u_prev[i] = u_applied[i];
+
+  float total_cost = 0.0f;
+
+  for (int t = 0; t < config.horizon; ++t) {
+    for (int i = 0; i < config.nu; ++i) {
+      u[i] = u_all[k * config.horizon * config.nu + t * config.nu + i];
+    }
+
+    dynamics.step(x, u, x_next, config.dt);
+    total_cost += cost.compute(x, u, u_prev, t);
+
+    for (int i = 0; i < config.nu; ++i) u_prev[i] = u[i];
+    for (int i = 0; i < config.nx; ++i) x[i] = x_next[i];
+  }
+
+  total_cost += cost.terminal_cost(x);
+  costs[k] = total_cost;
+}
+
+/**
  * @brief Smooth MPPI controller.
  *
  * Optimises in velocity space and integrates to produce smooth action
@@ -137,10 +225,6 @@ public:
     HANDLE_ERROR(cudaMalloc(&d_u_applied_, config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_u_applied_, 0, config.nu * sizeof(float)));
 
-    // Zero buffer used as u_nom placeholder in rollout
-    HANDLE_ERROR(cudaMalloc(&d_zeros_, config.horizon * config.nu * sizeof(float)));
-    HANDLE_ERROR(cudaMemset(d_zeros_, 0, config.horizon * config.nu * sizeof(float)));
-
     // Reference bias buffer (for split sampling)
     HANDLE_ERROR(cudaMalloc(&d_u_ref_, config.horizon * config.nu * sizeof(float)));
     HANDLE_ERROR(cudaMemset(d_u_ref_, 0, config.horizon * config.nu * sizeof(float)));
@@ -163,16 +247,12 @@ public:
     cudaFree(d_initial_state_);
     cudaFree(d_weights_);
     cudaFree(d_u_applied_);
-    cudaFree(d_zeros_);
     curandDestroyGenerator(gen_);
     softmax_.free();
   }
 
   /**
    * @brief Upload a reference control sequence for biased sampling.
-   *
-   * The reference is divided by control_sigma before uploading so that
-   * biased samples center at the actual u_ref after sigma scaling in rollout.
    *
    * @param u_ref Flattened reference controls $\in \mathbb{R}^{T \cdot n_u}$.
    * @param bias_alpha Fraction of samples to bias (separate from config_.alpha
@@ -183,17 +263,7 @@ public:
     if (static_cast<int>(u_ref.size()) != expected) {
       return;
     }
-    // Normalize by sigma: biased samples will be d_perturbed_actions_ which
-    // goes through rollout as u = 0 + perturbed * sigma, so we need
-    // u_ref_normalized = u_ref / sigma for the bias to produce correct values
-    std::vector<float> u_ref_norm(expected);
-    for (int t = 0; t < config_.horizon; ++t) {
-      for (int i = 0; i < config_.nu; ++i) {
-        float sigma = config_.control_sigma[i];
-        u_ref_norm[t * config_.nu + i] = u_ref[t * config_.nu + i] / sigma;
-      }
-    }
-    HANDLE_ERROR(cudaMemcpy(d_u_ref_, u_ref_norm.data(), expected * sizeof(float),
+    HANDLE_ERROR(cudaMemcpy(d_u_ref_, u_ref.data(), expected * sizeof(float),
                             cudaMemcpyHostToDevice));
     has_ref_bias_ = true;
     bias_alpha_ = bias_alpha;
@@ -210,9 +280,9 @@ public:
   /**
    * @brief Run the S-MPPI optimization loop.
    *
-   * 1. Sample velocity noise
-   * 2. Integrate to get perturbed action sequences
-   * 3. Rollout using perturbed actions as "noise" (with zero nominal)
+   * 1. Sample velocity noise $\boldsymbol{\epsilon} \sim \mathcal{N}(0, I)$
+   * 2. Integrate to get perturbed actions: $\mathbf{a}_k = \mathbf{a}_{\text{nom}} + \mathbf{v}_{\text{nom}}\Delta t + \boldsymbol{\epsilon}_k \odot \boldsymbol{\sigma}$
+   * 3. Rollout each sample using its pre-computed action sequence directly
    * 4. Add smoothness cost
    * 5. Compute softmax weights, update velocity sequence
    * 6. Integrate updated velocity into action sequence
@@ -241,8 +311,6 @@ public:
     HANDLE_ERROR(cudaGetLastError());
 
     // Apply reference bias to alpha fraction of samples (split sampling)
-    // Uses d_action_seq_ as u_nom (the nominal integrated actions) and
-    // d_u_ref_ which has been sigma-normalized in set_reference_sequence()
     if (has_ref_bias_ && bias_alpha_ > 0.0f) {
       int num_biased = static_cast<int>(config_.num_samples * bias_alpha_);
       int start_biased_idx = config_.num_samples - num_biased;
@@ -256,17 +324,17 @@ public:
       }
     }
 
-    // Rollout with perturbed actions (u_nom=0, noise=perturbed_actions)
-    kernels::rollout_kernel << < grid, block >> > (
+    // Rollout: read pre-computed perturbed actions directly (no sigma re-scaling)
+    smppi_rollout_kernel << < grid, block >> > (
       dynamics_,
       cost_,
       config_,
       d_initial_state_,
-      d_zeros_,
       d_perturbed_actions_,
       d_u_applied_,
       d_costs_
       );
+    HANDLE_ERROR(cudaGetLastError());
 
     // Add smoothness cost
     smoothness_cost_kernel << < grid, block >> > (
@@ -274,6 +342,7 @@ public:
       d_costs_,
       config_
       );
+    HANDLE_ERROR(cudaGetLastError());
 
     /* Compute softmax weights on device (no PCIe round-trip). */
     softmax_.compute(d_costs_, d_weights_, config_.lambda, config_.num_samples);
@@ -281,6 +350,8 @@ public:
     int num_params = config_.horizon * config_.nu;
     int blocks_upd = (num_params + 256 - 1) / 256;
 
+    /* Update velocity in the same space as the N(0,1) noise (scaled by sigma),
+       consistent with standard weighted_update_kernel semantics. */
     weighted_update_kernel << < blocks_upd, 256 >> > (
       d_u_vel_,
       d_noise_vel_,
@@ -289,14 +360,15 @@ public:
       num_params,
       config_
       );
+    HANDLE_ERROR(cudaGetLastError());
 
-    // Integrate updated velocity into action sequence
-    const int interp_threads = (config_.horizon * config_.nu + 255) / 256;
-    integrate_single_action_kernel<<<interp_threads, 256>>>(
+    /* Recompute action sequence from updated velocity; anchor at a_nom[0]. */
+    recompute_action_from_velocity_kernel<<<1, config_.nu>>>(
       d_action_seq_,
       d_u_vel_,
       config_
       );
+    HANDLE_ERROR(cudaGetLastError());
   }
 
   /**
@@ -363,13 +435,12 @@ private:
   float * d_noise_vel_;          ///< Velocity noise $[K \times T \times n_u]$.
   float * d_perturbed_actions_;  ///< Per-sample perturbed actions $[K \times T \times n_u]$.
 
-  float * d_u_ref_;          ///< Reference bias sequence $[T \times n_u]$ (sigma-normalized).
+  float * d_u_ref_;          ///< Reference bias sequence $[T \times n_u]$.
 
   float * d_costs_;          ///< Per-sample costs $[K]$.
   float * d_initial_state_;  ///< Current state $[n_x]$.
   float * d_weights_;        ///< Softmax weights $[K]$.
   float * d_u_applied_;      ///< Last applied control $[n_u]$.
-  float * d_zeros_;          ///< Zero buffer (rollout placeholder) $[T \times n_u]$.
   bool has_ref_bias_ = false; ///< Whether reference bias is active.
   float bias_alpha_ = 0.0f;  ///< Fraction of samples to bias (separate from config_.alpha).
   SoftmaxWeights softmax_;   ///< GPU-side softmax helper (CUB reductions).
@@ -397,11 +468,12 @@ __global__ void integrate_actions_kernel(
       int idx_base = t * config.nu + i;
       int idx_sample = k * (config.horizon * config.nu) + idx_base;
 
-      float vel = u_vel_nom[idx_base] + noise_vel[idx_sample];
+      /* Scale noise by sigma/dt so that after integration by dt the action
+         perturbation has magnitude sigma -- matching standard MPPI exploration. */
+      float scaled_noise = noise_vel[idx_sample] * config.control_sigma[i] / config.dt;
+      float vel = u_vel_nom[idx_base] + scaled_noise;
 
-      float act = action_seq_nom[idx_base] + vel * config.dt;
-
-      perturbed_actions[idx_sample] = act;
+      perturbed_actions[idx_sample] = action_seq_nom[idx_base] + vel * config.dt;
     }
   }
 }
@@ -438,6 +510,24 @@ __global__ void smoothness_cost_kernel(
     }
   }
   costs[k] += cost * config.w_action_seq_cost;
+}
+
+__global__ void recompute_action_from_velocity_kernel(
+  float * a_nom,
+  const float * v_nom,
+  MPPIConfig config
+)
+{
+  /* One thread per control channel. Loop over horizon to stay serial within
+     each channel so the cumulative sum stays numerically stable. */
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= config.nu) return;
+
+  float a = a_nom[i];  /* anchor: a_nom[0,i] is kept as-is */
+  for (int t = 1; t < config.horizon; ++t) {
+    a += v_nom[(t - 1) * config.nu + i] * config.dt;
+    a_nom[t * config.nu + i] = a;
+  }
 }
 
 }  // namespace mppi
