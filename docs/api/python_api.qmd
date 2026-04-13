@@ -178,9 +178,9 @@ Smooth MPPI — velocity-space noise integration.
 ctrl = cuda_mppi.QuadrotorSMPPI(config, dynamics, cost)
 ```
 
-> **⚠️ Known issue:** Effective exploration collapses to near-zero for small
+> **Known issue:** Effective exploration collapses to near-zero for small
 > $\Delta t$ because `integrate_actions_kernel` scales noise by $\Delta t$.
-> Tracking diverges until [issue #24](https://github.com/riccardo-enr/cuda-mppi/issues/24) is fixed.
+> Tracking diverges until [issue #30](https://github.com/riccardo-enr/cuda-mppi/issues/30) is fixed.
 
 ### `QuadrotorIMPPI`
 

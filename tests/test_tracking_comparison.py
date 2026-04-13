@@ -187,11 +187,11 @@ def run_comparison(
 
     # S-MPPI is intentionally excluded from this comparison.
     # integrate_actions_kernel scales velocity noise by dt (perturbed =
-    # action_seq + (vel + noise) * dt), which makes exploration ≈ N(0, dt²)
-    # regardless of control_sigma — effectively zero for dt=0.02.
-    # Fixing this requires decoupling the noise scale from control_sigma
-    # (tracked in issue #24).
-    print("\nS-MPPI: skipped (see issue #24 — velocity noise scaling)")
+    # action_seq + (vel + noise) * dt), which makes exploration ~ N(0, dt^2)
+    # regardless of control_sigma -- effectively zero for dt=0.02.
+    # Fixing this requires pre-scaling noise by 1/dt or adding a separate
+    # noise_sigma field to SMPPIConfig (tracked in issue #30).
+    print("\nS-MPPI: skipped (see issue #30 -- velocity noise scaling)")
     results.append({
         "name": "S-MPPI",
         "rmse_total": float("nan"),
@@ -307,13 +307,13 @@ def _plot_comparison(results, sim_time, dt):
 def test_tracking_comparison():
     """Verify active controllers track the lemniscate with RMSE < 2.0 m.
 
-    S-MPPI is skipped pending fix of velocity noise scaling (issue #24).
+    S-MPPI is skipped pending fix of velocity noise scaling (issue #30).
     """
     import math
     results = run_comparison(sim_time=5.0, plot=False)
     for r in results:
         if math.isnan(r["rmse_total"]):
-            continue  # controller skipped (see issue #24 for S-MPPI)
+            continue  # controller skipped (see issue #30 for S-MPPI)
         assert r["rmse_total"] < 2.0, (
             f"{r['name']} RMSE {r['rmse_total']:.3f} m exceeds 2.0 m threshold"
         )

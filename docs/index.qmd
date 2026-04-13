@@ -28,7 +28,7 @@ Lemniscate tracking, 30 s, K=900 rollouts, N=40, dt=0.02 s:
 |------------|----------|----------------|
 | MPPI       | 0.60     | 0.17 ms        |
 | K-MPPI     | 0.79     | 0.03 ms        |
-| S-MPPI     | -- ([#24](https://github.com/riccardo-enr/cuda-mppi/issues/24)) | -- |
+| S-MPPI     | -- ([#30](https://github.com/riccardo-enr/cuda-mppi/issues/30)) | -- |
 
 ### JAX vs CUDA MPPI
 

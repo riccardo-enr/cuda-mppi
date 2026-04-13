@@ -79,7 +79,7 @@ $$
 > **Status:** Python bindings are available. The exploration mechanism has a
 > known scaling issue — `integrate_actions_kernel` multiplies noise by $\Delta t$,
 > giving effective variance $\sigma^2 \Delta t^2 \approx 0$ for small timesteps.
-> Tracking diverges until this is fixed. See [issue #24](https://github.com/riccardo-enr/cuda-mppi/issues/24).
+> Tracking diverges until this is fixed. See [issue #30](https://github.com/riccardo-enr/cuda-mppi/issues/30).
 
 S-MPPI lifts optimisation into the **velocity** (rate-of-change) of the
 control signal, enforcing $C^1$ continuity.
@@ -111,7 +111,7 @@ $$
 
 *   $C^1$-continuous controls; reduced actuator wear.
 *   Slower reaction to sudden obstacles due to control inertia.
-*   ⚠️ Noise attenuation bug pending fix (issue #24).
+*   Noise attenuation bug pending fix (issue #30).
 
 ---
 
@@ -179,5 +179,5 @@ See the [dedicated I-MPPI page](i_mppi.qmd) for theory and usage.
 | Noise type | White | Brownian | GP/RBF | B-spline GP | White |
 | Smoothness | Low | $C^1$ | $C^\infty$ (RBF) | $C^2$ | Low |
 | Compute/step | baseline | ~baseline | ~6× faster | — | ~baseline |
-| Python exposed | ✓ | ✓ (⚠️ #24) | ✓ | — | ✓ |
+| Python exposed | ✓ | ✓ (#30) | ✓ | — | ✓ |
 | Quadrotor RMSE (30 s) | 0.60 m | — | 0.79 m | — | — |

@@ -71,7 +71,7 @@ RMSE for each controller variant. Expected baselines:
 |------------|----------|----------------|
 | MPPI       | ~0.60    | ~0.17 ms       |
 | K-MPPI     | ~0.79    | ~0.03 ms       |
-| S-MPPI     | skipped  | — (see [issue #24](https://github.com/riccardo-enr/cuda-mppi/issues/24)) |
+| S-MPPI     | skipped  | — (see [issue #30](https://github.com/riccardo-enr/cuda-mppi/issues/30)) |
 
 ## C++ / CUDA tests
 
