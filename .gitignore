@@ -1,6 +1,7 @@
 # Data files
 *.csv
 *.png
+!docs/_media/*.png
 
 # Build directories
 build/

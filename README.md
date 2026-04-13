@@ -19,6 +19,26 @@ This library provides high-performance CUDA implementations of MPPI and related 
 - Multiple controller variants
 - Optimized CUDA kernels for parallel sampling
 
+## JAX vs CUDA MPPI
+
+Apples-to-apples comparison on a quadrotor lemniscate tracking task (K=900,
+N=40, dt=0.02 s, 30 s simulation). Both implementations run the same MPPI
+algorithm on the same GPU -- only the stack differs.
+
+### Trajectory tracking
+
+![3D trajectory comparison](docs/_media/compare_trajectory_3d.png)
+
+### Compute latency
+
+![Compute latency](docs/_media/compare_latency.png)
+
+Reproduce with:
+
+```bash
+pixi run python scripts/bench_jax_mppi.py --compare --plot
+```
+
 ## Building
 
 ```bash
