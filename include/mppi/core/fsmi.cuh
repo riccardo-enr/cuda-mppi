@@ -727,7 +727,8 @@ inline void fov_grid_update(
     uav_pos, yaw, fov_rad, max_range, n_rays, ray_step,
     free_update, occ_update, occ_threshold
     );
-  cudaDeviceSynchronize();
+  HANDLE_ERROR(cudaGetLastError());
+  HANDLE_ERROR(cudaDeviceSynchronize());
 }
 
 }  // namespace mppi
