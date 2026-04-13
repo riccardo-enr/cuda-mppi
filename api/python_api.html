@@ -537,7 +537,7 @@ window.Quarto = {
 <p>Smooth MPPI — velocity-space noise integration.</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>ctrl <span class="op">=</span> cuda_mppi.QuadrotorSMPPI(config, dynamics, cost)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <blockquote class="blockquote">
-<p><strong>⚠️ Known issue:</strong> Effective exploration collapses to near-zero for small <span class="math inline">\(\Delta t\)</span> because <code>integrate_actions_kernel</code> scales noise by <span class="math inline">\(\Delta t\)</span>. Tracking diverges until <a href="https://github.com/riccardo-enr/cuda-mppi/issues/24">issue #24</a> is fixed.</p>
+<p><strong>Known issue:</strong> Effective exploration collapses to near-zero for small <span class="math inline">\(\Delta t\)</span> because <code>integrate_actions_kernel</code> scales noise by <span class="math inline">\(\Delta t\)</span>. Tracking diverges until <a href="https://github.com/riccardo-enr/cuda-mppi/issues/30">issue #30</a> is fixed.</p>
 </blockquote>
 </section>
 <section id="quadrotorimppi" class="level3">

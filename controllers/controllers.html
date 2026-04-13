@@ -397,7 +397,7 @@ w_k = \exp\!\left(-\tfrac{1}{\lambda}\bigl(S(\tau_k) - \rho\bigr)\right)
 <h1>2. Smooth MPPI (S-MPPI)</h1>
 <p><strong>Header:</strong> <code>include/mppi/controllers/smppi.cuh</code> <strong>Python class:</strong> <code>QuadrotorSMPPI</code></p>
 <blockquote class="blockquote">
-<p><strong>Status:</strong> Python bindings are available. The exploration mechanism has a known scaling issue — <code>integrate_actions_kernel</code> multiplies noise by <span class="math inline">\(\Delta t\)</span>, giving effective variance <span class="math inline">\(\sigma^2 \Delta t^2 \approx 0\)</span> for small timesteps. Tracking diverges until this is fixed. See <a href="https://github.com/riccardo-enr/cuda-mppi/issues/24">issue #24</a>.</p>
+<p><strong>Status:</strong> Python bindings are available. The exploration mechanism has a known scaling issue — <code>integrate_actions_kernel</code> multiplies noise by <span class="math inline">\(\Delta t\)</span>, giving effective variance <span class="math inline">\(\sigma^2 \Delta t^2 \approx 0\)</span> for small timesteps. Tracking diverges until this is fixed. See <a href="https://github.com/riccardo-enr/cuda-mppi/issues/30">issue #30</a>.</p>
 </blockquote>
 <p>S-MPPI lifts optimisation into the <strong>velocity</strong> (rate-of-change) of the control signal, enforcing <span class="math inline">\(C^1\)</span> continuity.</p>
 <section id="theory" class="level3">
@@ -420,7 +420,7 @@ J_{\mathrm{smooth}} = J_{\mathrm{base}} + \gamma \sum_{t=0}^{T-1}\|u_{t+1} - u_t
 <ul>
 <li><span class="math inline">\(C^1\)</span>-continuous controls; reduced actuator wear.</li>
 <li>Slower reaction to sudden obstacles due to control inertia.</li>
-<li>⚠️ Noise attenuation bug pending fix (issue #24).</li>
+<li>Noise attenuation bug pending fix (issue #30).</li>
 </ul>
 <hr>
 </section>
@@ -526,7 +526,7 @@ k(t_i, t_j) = \sigma_f^2 \exp\!\left(-\frac{(t_i - t_j)^2}{2\ell^2}\right)
 <tr class="odd">
 <td>Python exposed</td>
 <td>✓</td>
-<td>✓ (⚠️ #24)</td>
+<td>✓ (#30)</td>
 <td>✓</td>
 <td>—</td>
 <td>✓</td>
