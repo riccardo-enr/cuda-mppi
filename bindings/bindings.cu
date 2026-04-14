@@ -296,12 +296,6 @@ struct PyQuadrotorIMPPI
     c.use_grid_3d = true;
   }
 
-  void update_cost_info_field(PyInfoField & py_field)
-  {
-    auto & c = controller.cost();
-    c.info_field = py_field.field;
-  }
-
   void set_position_reference(const Eigen::VectorXf & pos_ref_flat, int horizon)
   {
         // Upload position reference (horizon × 3) to device
@@ -369,7 +363,7 @@ struct PyDI3IMPPI
   {
     auto & c = controller.cost();
     c.grid = py_grid.grid;
-    c.use_grid_3d = false;
+    // c.use_grid_3d = false;
   }
 
   void update_cost_grid_3d(PyOccupancyGrid3D & py_grid)
@@ -927,7 +921,6 @@ NB_MODULE(cuda_mppi, m) {
     // 10. InformativeCost3D
     nb::class_<instantiations::InformativeCost3D>(m, "InformativeCost3D")
   .def(nb::init< >())
-  .def_rw("lambda_info", &instantiations::InformativeCost3D::lambda_info)
   .def_rw("lambda_local", &instantiations::InformativeCost3D::lambda_local)
   .def_rw("target_weight", &instantiations::InformativeCost3D::target_weight)
   .def_rw("collision_penalty", &instantiations::InformativeCost3D::collision_penalty)
@@ -963,6 +956,5 @@ NB_MODULE(cuda_mppi, m) {
              "Upload position reference trajectory (horizon*3) to device")
   .def("set_cost", &PyDI3IMPPI::set_cost, nb::arg("cost"))
   .def("update_cost_grid", &PyDI3IMPPI::update_cost_grid, nb::arg("grid"))
-  .def("update_cost_grid_3d", &PyDI3IMPPI::update_cost_grid_3d, nb::arg("grid"))
-  .def("update_cost_info_field", &PyDI3IMPPI::update_cost_info_field, nb::arg("info_field"));
+  .def("update_cost_grid_3d", &PyDI3IMPPI::update_cost_grid_3d, nb::arg("grid"));
 }

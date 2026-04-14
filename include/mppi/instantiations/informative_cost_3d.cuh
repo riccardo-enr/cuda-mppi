@@ -12,8 +12,8 @@
  * | 3 | Altitude tracking          | `height_weight`    | +    |
  * | 4 | Reference trajectory track | `target_weight`    | +    |
  * | 5 | Uniform-FSMI local info    | `lambda_local`     | −    |
- * | 6 | Info field lookup          | `lambda_info`      | −    |
- * | 7 | Action regularisation      | `action_reg`       | +    |
+ * | 6 | Action regularisation      | `action_reg`       | +    |
+ * | 7 | Velocity penalty           | `velocity_weight`  | +    |
  *
  * Layer 5 derives yaw from the velocity direction:
  * $\psi = \operatorname{atan2}(v_y, v_x)$.  At near-zero speed the
@@ -41,12 +41,10 @@ struct InformativeCost3D
   OccupancyGrid2D grid;          ///< 2D occupancy grid for obstacle/FSMI queries.
   OccupancyGrid   grid_3d;       ///< 3D voxel grid for collision queries.
   bool use_grid_3d = false;      ///< Use 3D grid for collision instead of 2D.
-  InfoField info_field;           ///< Precomputed information potential field.
   UniformFSMIConfig uniform_cfg;  ///< Configuration for local uniform-FSMI.
 
   /* ── Cost weights ────────────────────────────────────────────────── */
 
-  float lambda_info = 5.0f;      ///< Info field lookup weight (layer 6).
   float lambda_local = 10.0f;    ///< Uniform-FSMI weight (layer 5).
   float target_weight = 1.0f;    ///< Reference trajectory tracking (layer 4).
 
@@ -138,18 +136,12 @@ struct InformativeCost3D
             grid, make_float2(px, py), yaw, uniform_cfg);
     cost -= lambda_local * info_gain;
 
-    /* 6. Info field lookup (strategic guidance) */
-    if (info_field.d_field != nullptr) {
-      float field_val = info_field.sample(make_float2(px, py));
-      cost -= lambda_info * field_val;
-    }
-
-    /* 7. Action regularisation — 3 acceleration components */
+    /* 6. Action regularisation — 3 acceleration components */
     for (int i = 0; i < 3; ++i) {
       cost += action_reg * u[i] * u[i];
     }
 
-    /* 8. Velocity penalty (soft speed limit) */
+    /* 7. Velocity penalty (soft speed limit) */
     if (velocity_weight > 0.0f) {
       float vz = x[5];
       float speed2 = vx * vx + vy * vy + vz * vz;

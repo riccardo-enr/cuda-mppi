@@ -428,7 +428,6 @@ TEST(InformativeCost3D_Test, HeightCostOnly) {
   cost.height_weight = 10.0f;
   cost.target_altitude = -2.0f;
   cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
   cost.target_weight = 0.0f;
   cost.action_reg = 0.0f;
   cost.velocity_weight = 0.0f;
@@ -452,9 +451,7 @@ TEST(InformativeCost3D_Test, CollisionPenalty) {
   cost.collision_penalty = 500.0f;
   cost.occ_threshold = 0.7f;
   cost.height_weight = 0.0f;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.target_weight = 0.0f;
+  cost.lambda_local = 0.0f;  cost.target_weight = 0.0f;
   cost.action_reg = 0.0f;
   cost.velocity_weight = 0.0f;
   cost.bound_x_min = -100.f;
@@ -474,9 +471,7 @@ TEST(InformativeCost3D_Test, BoundsPenalty) {
   cost.grid = dg.grid;
   cost.collision_penalty = 1000.0f;
   cost.height_weight = 0.0f;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.target_weight = 0.0f;
+  cost.lambda_local = 0.0f;  cost.target_weight = 0.0f;
   cost.action_reg = 0.0f;
   cost.velocity_weight = 0.0f;
   cost.bound_x_min = 0.0f;
@@ -501,9 +496,7 @@ TEST(InformativeCost3D_Test, ActionRegularisation) {
   cost.collision_penalty = 0.0f;
   cost.height_weight = 0.0f;
   cost.target_altitude = 0.0f;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.target_weight = 0.0f;
+  cost.lambda_local = 0.0f;  cost.target_weight = 0.0f;
   cost.action_reg = 1.0f;
   cost.velocity_weight = 0.0f;
   cost.bound_x_min = -100.f;
@@ -545,9 +538,7 @@ TEST(InformativeCost3D_Test, RefTrajectoryTracking) {
   cost.collision_penalty = 0.0f;
   cost.height_weight = 0.0f;
   cost.target_altitude = 0.0f;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.target_weight = 10.0f;
+  cost.lambda_local = 0.0f;  cost.target_weight = 10.0f;
   cost.action_reg = 0.0f;
   cost.velocity_weight = 0.0f;
   cost.bound_x_min = -100.f;
@@ -589,9 +580,7 @@ TEST(IMPPIController, SingleComputeFinite) {
   DeviceGrid2D dg(100, 100, 0.1f);
   InformativeCost3D cost{};
   cost.grid = dg.grid;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.collision_penalty = 0.0f;
+  cost.lambda_local = 0.0f;  cost.collision_penalty = 0.0f;
   cost.bound_x_min = -100.f;
   cost.bound_x_max = 100.f;
   cost.bound_y_min = -100.f;
@@ -650,9 +639,7 @@ TEST(IMPPIPipeline, AltitudeConvergence) {
   cost.grid = dg.grid;
   cost.height_weight = 10.0f;
   cost.target_altitude = -2.0f;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.target_weight = 0.0f;
+  cost.lambda_local = 0.0f;  cost.target_weight = 0.0f;
   cost.collision_penalty = 0.0f;
   cost.action_reg = 0.5f;       // stronger regularisation to damp oscillations
   cost.velocity_weight = 2.0f;  // penalise high speed to prevent overshoot
@@ -702,9 +689,7 @@ TEST(IMPPIPipeline, ObstacleAvoidance) {
   cost.occ_threshold = 0.7f;
   cost.height_weight = 0.0f;  // ignore height for this test
   cost.target_altitude = 0.0f;
-  cost.lambda_local = 0.0f;
-  cost.lambda_info = 0.0f;
-  cost.target_weight = 0.0f;
+  cost.lambda_local = 0.0f;  cost.target_weight = 0.0f;
   cost.action_reg = 0.1f;
   cost.velocity_weight = 2.0f;
   cost.max_velocity = 2.0f;
