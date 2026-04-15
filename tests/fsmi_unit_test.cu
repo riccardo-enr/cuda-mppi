@@ -9,6 +9,35 @@
 using namespace mppi;
 
 // ---------------------------------------------------------------------------
+// Test kernels for 3D FSMI
+// ---------------------------------------------------------------------------
+__global__ void test_uniform_3d_kernel(
+  OccupancyGrid grid3,
+  float3 pos,
+  float yaw,
+  UniformFSMIConfig cfg,
+  float * out
+)
+{
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    *out = compute_uniform_fsmi_at_pose_3d(grid3, pos, yaw, cfg);
+  }
+}
+
+__global__ void test_uniform_2d_kernel(
+  OccupancyGrid2D grid,
+  float2 pos,
+  float yaw,
+  UniformFSMIConfig cfg,
+  float * out
+)
+{
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    *out = compute_uniform_fsmi_at_pose(grid, pos, yaw, cfg);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Test kernel: compute FSMI / Uniform-FSMI at a single pose on device
 // ---------------------------------------------------------------------------
 __global__ void test_fsmi_kernel(
@@ -295,6 +324,97 @@ int main()
     std::cout << "  PASSED" << std::endl;
 
     cudaFree(d_map2);
+  }
+
+    // --- Test 7: 3D beam-cast -- obstacle on elevation beam ---
+  {
+    int W3 = 20, H3 = 20, D3 = 10;
+    float res3 = 0.5f;
+    std::vector<float> h_map3(W3 * H3 * D3, 0.0f);
+
+    // Unknown voxel at grid (10,10,7) = world (5.0, 5.0, 3.5).
+    // UAV at (5.0, 5.0, 0.0) -> elevation ~30 deg; covered by 5-ring pattern.
+    h_map3[7 * W3 * H3 + 10 * W3 + 10] = 0.5f;
+
+    float * d_map3, * d_mi3;
+    cudaMalloc(&d_map3, W3 * H3 * D3 * sizeof(float));
+    cudaMemcpy(d_map3, h_map3.data(), W3 * H3 * D3 * sizeof(float),
+               cudaMemcpyHostToDevice);
+    cudaMalloc(&d_mi3, sizeof(float));
+
+    OccupancyGrid grid3;
+    grid3.data       = d_map3;
+    grid3.dims       = make_int3(W3, H3, D3);
+    grid3.resolution = res3;
+    grid3.origin     = make_float3(0.0f, 0.0f, 0.0f);
+
+    UniformFSMIConfig cfg3;
+    cfg3.num_beams           = 6;
+    cfg3.fov_rad             = 6.283f;   // 360 deg azimuth
+    cfg3.max_range           = 5.0f;
+    cfg3.ray_step            = 0.5f;
+    cfg3.num_elevation_beams = 5;
+    cfg3.elevation_fov_rad   = 1.047f;   // 60 deg total
+
+    test_uniform_3d_kernel<<<1, 1>>>(
+        grid3, make_float3(5.0f, 5.0f, 0.0f), 0.0f, cfg3, d_mi3);
+    cudaDeviceSynchronize();
+
+    float h_mi3;
+    cudaMemcpy(&h_mi3, d_mi3, sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "\nTest 7: 3D FSMI -- obstacle on elevation beam" << std::endl;
+    std::cout << "  3D Uniform FSMI (5 elevation rings): " << h_mi3 << std::endl;
+    assert(h_mi3 > 0.0f && "3D FSMI should be positive when elevation beam hits unknown voxel");
+    std::cout << "  PASSED" << std::endl;
+
+    cudaFree(d_map3);
+    cudaFree(d_mi3);
+  }
+
+    // --- Test 8: 3D FSMI (1 elevation beam) matches 2D on same slice ---
+  {
+    // Wrap the existing 2D map as a 3D grid with depth=1 at z=0.
+    float * d_map3b, * d_2d_out, * d_3d_out;
+    cudaMalloc(&d_map3b, W * H * sizeof(float));
+    cudaMemcpy(d_map3b, h_map.data(), W * H * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMalloc(&d_2d_out, sizeof(float));
+    cudaMalloc(&d_3d_out, sizeof(float));
+
+    OccupancyGrid grid3b;
+    grid3b.data       = d_map3b;
+    grid3b.dims       = make_int3(W, H, 1);
+    grid3b.resolution = res;
+    grid3b.origin     = make_float3(0.0f, 0.0f, 0.0f);
+
+    UniformFSMIConfig ucfg_flat;
+    ucfg_flat.num_beams           = 6;
+    ucfg_flat.fov_rad             = 1.57f;
+    ucfg_flat.max_range           = 2.0f;
+    ucfg_flat.ray_step            = 0.2f;
+    ucfg_flat.num_elevation_beams = 1;
+    ucfg_flat.elevation_fov_rad   = 0.0f;   // flat -> identical to 2D
+
+    float2 pos2 = {0.5f, 1.0f};
+    float  yaw2 = 0.7854f;
+
+    test_uniform_2d_kernel<<<1, 1>>>(grid, pos2, yaw2, ucfg_flat, d_2d_out);
+    test_uniform_3d_kernel<<<1, 1>>>(
+        grid3b, make_float3(0.5f, 1.0f, 0.0f), yaw2, ucfg_flat, d_3d_out);
+    cudaDeviceSynchronize();
+
+    float h_2d, h_3d;
+    cudaMemcpy(&h_2d, d_2d_out, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&h_3d, d_3d_out, sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "\nTest 8: 3D (1 elevation beam) matches 2D on flat slice" << std::endl;
+    std::cout << "  2D FSMI: " << h_2d << "  3D (1 ring): " << h_3d << std::endl;
+    assert(fabsf(h_2d - h_3d) < 1e-4f && "3D with 1 elevation beam must match 2D");
+    std::cout << "  PASSED" << std::endl;
+
+    cudaFree(d_map3b);
+    cudaFree(d_2d_out);
+    cudaFree(d_3d_out);
   }
 
     // Cleanup
