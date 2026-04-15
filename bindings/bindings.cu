@@ -373,12 +373,6 @@ struct PyDI3IMPPI
     c.use_grid_3d = true;
   }
 
-  void update_cost_info_field(PyInfoField & py_field)
-  {
-    auto & c = controller.cost();
-    c.info_field = py_field.field;
-  }
-
   void set_position_reference(const Eigen::VectorXf & pos_ref_flat, int horizon)
   {
     if (d_ref_traj == nullptr || ref_horizon != horizon) {
@@ -723,9 +717,7 @@ NB_MODULE(cuda_mppi, m) {
   .def("update_cost_grid", &PyQuadrotorIMPPI::update_cost_grid, nb::arg("grid"),
              "Update the 2D grid pointer in the controller's cost (disables 3D)")
   .def("update_cost_grid_3d", &PyQuadrotorIMPPI::update_cost_grid_3d, nb::arg("grid"),
-             "Update the 3D voxel grid pointer and enable 3D collision checking")
-  .def("update_cost_info_field", &PyQuadrotorIMPPI::update_cost_info_field, nb::arg("info_field"),
-             "Update the info field pointer in the controller's cost");
+             "Update the 3D voxel grid pointer and enable 3D collision checking");
 
     // 7b. TrackingCost
     nb::class_<instantiations::TrackingCost>(m, "TrackingCost")
