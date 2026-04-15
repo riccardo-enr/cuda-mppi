@@ -934,7 +934,22 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("bound_x_min", &instantiations::InformativeCost3D::bound_x_min)
   .def_rw("bound_x_max", &instantiations::InformativeCost3D::bound_x_max)
   .def_rw("bound_y_min", &instantiations::InformativeCost3D::bound_y_min)
-  .def_rw("bound_y_max", &instantiations::InformativeCost3D::bound_y_max);
+  .def_rw("bound_y_max", &instantiations::InformativeCost3D::bound_y_max)
+  /* UniformFSMIConfig sub-fields (elevation beam pattern) */
+  .def_prop_rw("uniform_fsmi_num_elevation_beams",
+    [](const instantiations::InformativeCost3D & c) {
+      return c.uniform_cfg.num_elevation_beams;
+    },
+    [](instantiations::InformativeCost3D & c, int v) {
+      c.uniform_cfg.num_elevation_beams = v;
+    })
+  .def_prop_rw("uniform_fsmi_elevation_fov_rad",
+    [](const instantiations::InformativeCost3D & c) {
+      return c.uniform_cfg.elevation_fov_rad;
+    },
+    [](instantiations::InformativeCost3D & c, float v) {
+      c.uniform_cfg.elevation_fov_rad = v;
+    });
 
     // 11. DI3IMPPI (3D Double-Integrator I-MPPI wrapper)
     nb::class_<PyDI3IMPPI>(m, "DI3IMPPI")
