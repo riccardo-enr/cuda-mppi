@@ -91,8 +91,8 @@ struct FSMIConfig {
  * real-time evaluation inside MPPI rollout kernels.
  */
 struct UniformFSMIConfig {
-  float fov_rad = 1.57f;          ///< FOV half-angle (rad).
-  int   num_beams = 6;            ///< Number of beams (fewer than full FSMI).
+  float fov_rad = 1.57f;          ///< Azimuth FOV half-angle (rad).
+  int   num_beams = 6;            ///< Number of azimuth beams.
   float max_range = 2.5f;         ///< Local sensing range (m).
   float ray_step = 0.2f;          ///< Coarser ray step (m).
 
@@ -100,6 +100,9 @@ struct UniformFSMIConfig {
   float inv_sensor_model_emp = -0.4f;  ///< Log-odds for empty cells.
 
   float info_weight = 5.0f;       ///< Cost weight for uniform FSMI reward.
+
+  int   num_elevation_beams = 1;  ///< Elevation rings (1 = horizontal only).
+  float elevation_fov_rad = 0.0f; ///< Total elevation sweep (rad); 0 = flat.
 };
 
 /**
@@ -425,6 +428,74 @@ __device__ float compute_uniform_fsmi_at_pose(
     }
 
     total_mi += compute_beam_uniform_fsmi(cell_probs, num_cells, cfg);
+  }
+
+  return total_mi;
+}
+
+/**
+ * @brief Compute uniform FSMI at a single 3D pose (azimuth x elevation beams).
+ *
+ * Extends `compute_uniform_fsmi_at_pose` to a full spherical beam pattern by
+ * adding an outer elevation loop.  Each elevation ring casts `num_beams`
+ * azimuth rays at pitch angle $\phi$, uniformly distributed in
+ * $[-\text{elevation\_fov\_rad}/2,\; +\text{elevation\_fov\_rad}/2]$.
+ *
+ * When `num_elevation_beams == 1` and `elevation_fov_rad == 0` the function
+ * degrades to a single horizontal ring, giving results identical to
+ * `compute_uniform_fsmi_at_pose` evaluated on the same horizontal slice.
+ *
+ * @param grid  3D voxel grid (W x H x D).
+ * @param pos   UAV position in world frame (NED).
+ * @param yaw   Heading angle (rad).
+ * @param cfg   Uniform FSMI configuration (uses `num_elevation_beams`,
+ *              `elevation_fov_rad` in addition to azimuth fields).
+ * @return      Total approximate mutual information (nats).
+ */
+__device__ float compute_uniform_fsmi_at_pose_3d(
+  const OccupancyGrid & grid,
+  float3 pos,
+  float yaw,
+  const UniformFSMIConfig & cfg
+)
+{
+  int num_cells = (int)(cfg.max_range / cfg.ray_step);
+  if (num_cells > FSMI_MAX_CELLS) {num_cells = FSMI_MAX_CELLS;}
+
+  float cell_probs[FSMI_MAX_CELLS];
+  float total_mi = 0.0f;
+
+  int n_el = cfg.num_elevation_beams;
+
+  for (int e = 0; e < n_el; ++e) {
+    /* Elevation angle: flat (pitch = 0) when n_el == 1. */
+    float pitch = (n_el > 1)
+      ? (-cfg.elevation_fov_rad * 0.5f +
+         cfg.elevation_fov_rad * (float)e / (float)(n_el - 1))
+      : 0.0f;
+
+    float cos_pitch = cosf(pitch);
+    float dz = sinf(pitch);
+
+    for (int b = 0; b < cfg.num_beams; ++b) {
+      float angle = yaw - cfg.fov_rad * 0.5f +
+        cfg.fov_rad * (float)b / fmaxf((float)(cfg.num_beams - 1), 1.0f);
+
+      float dx = cos_pitch * cosf(angle);
+      float dy = cos_pitch * sinf(angle);
+
+      for (int c = 0; c < num_cells; ++c) {
+        float dist = (c + 0.5f) * cfg.ray_step;
+        float3 wp = {pos.x + dist * dx,
+                     pos.y + dist * dy,
+                     pos.z + dist * dz};
+
+        float p = grid.get_probability(wp);
+        cell_probs[c] = p;
+      }
+
+      total_mi += compute_beam_uniform_fsmi(cell_probs, num_cells, cfg);
+    }
   }
 
   return total_mi;

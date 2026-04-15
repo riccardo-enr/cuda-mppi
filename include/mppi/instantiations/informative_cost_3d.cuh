@@ -128,12 +128,12 @@ struct InformativeCost3D
       cost += target_weight * sqrtf(ddx * ddx + ddy * ddy + ddz * ddz);
     }
 
-    /* 5. Uniform-FSMI local information reward.
+    /* 5. Uniform-FSMI local information reward (3D beam-cast).
      *    Yaw = velocity heading: atan2(vy, vx).                      */
     float vx = x[3], vy = x[4];
     float yaw = atan2f(vy, vx);
-    float info_gain = compute_uniform_fsmi_at_pose(
-            grid, make_float2(px, py), yaw, uniform_cfg);
+    float info_gain = compute_uniform_fsmi_at_pose_3d(
+            grid_3d, make_float3(px, py, pz), yaw, uniform_cfg);
     cost -= lambda_local * info_gain;
 
     /* 6. Action regularisation — 3 acceleration components */
