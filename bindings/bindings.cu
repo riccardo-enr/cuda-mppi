@@ -611,6 +611,19 @@ NB_MODULE(cuda_mppi, m) {
     // NEW: I-MPPI Feature Parity Bindings
     // ===================================================================
 
+    // 2b. UniformFSMIConfig (elevation beam pattern)
+    nb::class_<UniformFSMIConfig>(m, "UniformFSMIConfig")
+  .def(nb::init<>())
+  .def_rw("fov_rad",               &UniformFSMIConfig::fov_rad)
+  .def_rw("num_beams",             &UniformFSMIConfig::num_beams)
+  .def_rw("max_range",             &UniformFSMIConfig::max_range)
+  .def_rw("ray_step",              &UniformFSMIConfig::ray_step)
+  .def_rw("inv_sensor_model_occ",  &UniformFSMIConfig::inv_sensor_model_occ)
+  .def_rw("inv_sensor_model_emp",  &UniformFSMIConfig::inv_sensor_model_emp)
+  .def_rw("info_weight",           &UniformFSMIConfig::info_weight)
+  .def_rw("num_elevation_beams",   &UniformFSMIConfig::num_elevation_beams)
+  .def_rw("elevation_fov_rad",     &UniformFSMIConfig::elevation_fov_rad);
+
     // 3. OccupancyGrid2D (with device memory management)
     nb::class_<PyOccupancyGrid2D>(m, "OccupancyGrid2D")
   .def(nb::init<int, int, float, float, float>(),
@@ -927,21 +940,7 @@ NB_MODULE(cuda_mppi, m) {
   .def_rw("bound_x_max", &instantiations::InformativeCost3D::bound_x_max)
   .def_rw("bound_y_min", &instantiations::InformativeCost3D::bound_y_min)
   .def_rw("bound_y_max", &instantiations::InformativeCost3D::bound_y_max)
-  /* UniformFSMIConfig sub-fields (elevation beam pattern) */
-  .def_prop_rw("uniform_fsmi_num_elevation_beams",
-    [](const instantiations::InformativeCost3D & c) {
-      return c.uniform_cfg.num_elevation_beams;
-    },
-    [](instantiations::InformativeCost3D & c, int v) {
-      c.uniform_cfg.num_elevation_beams = v;
-    })
-  .def_prop_rw("uniform_fsmi_elevation_fov_rad",
-    [](const instantiations::InformativeCost3D & c) {
-      return c.uniform_cfg.elevation_fov_rad;
-    },
-    [](instantiations::InformativeCost3D & c, float v) {
-      c.uniform_cfg.elevation_fov_rad = v;
-    });
+  .def_rw("uniform_cfg", &instantiations::InformativeCost3D::uniform_cfg);
 
     // 11. DI3IMPPI (3D Double-Integrator I-MPPI wrapper)
     nb::class_<PyDI3IMPPI>(m, "DI3IMPPI")
