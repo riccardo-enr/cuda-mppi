@@ -22,6 +22,7 @@
 #define MPPI_SOFTMAX_CUH
 
 #include <cuda_runtime.h>
+
 #include <cub/device/device_reduce.cuh>
 
 #include "mppi/utils/cuda_utils.cuh"
@@ -29,26 +30,25 @@
 namespace mppi {
 
 /* Compute exp-weights: weights[k] = exp(-(costs[k] - *d_min) / lambda). */
-__global__ inline void exp_weights_kernel(
-    const float* __restrict__ costs,
-    float* __restrict__ weights,
-    const float* __restrict__ d_min,
-    float lambda,
-    int K)
-{
+__global__ inline void exp_weights_kernel(const float* __restrict__ costs,
+                                          float* __restrict__ weights,
+                                          const float* __restrict__ d_min,
+                                          float lambda, int K) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
-  if (k >= K) { return; }
+  if (k >= K) {
+    return;
+  }
   weights[k] = expf(-(costs[k] - *d_min) / lambda);
 }
 
 /* Normalize: weights[k] /= *d_sum. */
-__global__ inline void normalize_weights_kernel(
-    float* __restrict__ weights,
-    const float* __restrict__ d_sum,
-    int K)
-{
+__global__ inline void normalize_weights_kernel(float* __restrict__ weights,
+                                                const float* __restrict__ d_sum,
+                                                int K) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
-  if (k >= K) { return; }
+  if (k >= K) {
+    return;
+  }
   weights[k] /= *d_sum;
 }
 
@@ -69,11 +69,11 @@ __global__ inline void normalize_weights_kernel(
  * ```
  */
 struct SoftmaxWeights {
-  float* d_min  = nullptr;  ///< Device scalar: minimum cost over K samples.
-  float* d_sum  = nullptr;  ///< Device scalar: sum of exp-weights.
-  void*  d_temp = nullptr;  ///< CUB temporary reduction storage.
-  size_t temp_bytes = 0;    ///< Size of the CUB temp buffer.
-  int    max_K  = 0;        ///< K this was allocated for.
+  float* d_min = nullptr;  ///< Device scalar: minimum cost over K samples.
+  float* d_sum = nullptr;  ///< Device scalar: sum of exp-weights.
+  void* d_temp = nullptr;  ///< CUB temporary reduction storage.
+  size_t temp_bytes = 0;   ///< Size of the CUB temp buffer.
+  int max_K = 0;           ///< K this was allocated for.
 
   /**
    * @brief Allocate all device buffers for a given number of samples.
@@ -83,18 +83,17 @@ struct SoftmaxWeights {
    *
    * @param K  Number of MPPI samples (must be > 0).
    */
-  void allocate(int K)
-  {
+  void allocate(int K) {
     max_K = K;
     HANDLE_ERROR(cudaMalloc(&d_min, sizeof(float)));
     HANDLE_ERROR(cudaMalloc(&d_sum, sizeof(float)));
 
     /* Query CUB temp sizes (pass nullptr to get size only). */
     size_t bytes_min = 0, bytes_sum = 0;
-    cub::DeviceReduce::Min(nullptr, bytes_min,
-                           static_cast<float*>(nullptr), d_min, K);
-    cub::DeviceReduce::Sum(nullptr, bytes_sum,
-                           static_cast<float*>(nullptr), d_sum, K);
+    cub::DeviceReduce::Min(nullptr, bytes_min, static_cast<float*>(nullptr),
+                           d_min, K);
+    cub::DeviceReduce::Sum(nullptr, bytes_sum, static_cast<float*>(nullptr),
+                           d_sum, K);
     temp_bytes = (bytes_min > bytes_sum) ? bytes_min : bytes_sum;
     HANDLE_ERROR(cudaMalloc(&d_temp, temp_bytes));
   }
@@ -105,13 +104,21 @@ struct SoftmaxWeights {
    * Safe to call even if `allocate()` was never called (all pointers
    * are null-initialized).
    */
-  void free()
-  {
-    if (d_min)  { cudaFree(d_min);  d_min  = nullptr; }
-    if (d_sum)  { cudaFree(d_sum);  d_sum  = nullptr; }
-    if (d_temp) { cudaFree(d_temp); d_temp = nullptr; }
+  void free() {
+    if (d_min) {
+      cudaFree(d_min);
+      d_min = nullptr;
+    }
+    if (d_sum) {
+      cudaFree(d_sum);
+      d_sum = nullptr;
+    }
+    if (d_temp) {
+      cudaFree(d_temp);
+      d_temp = nullptr;
+    }
     temp_bytes = 0;
-    max_K      = 0;
+    max_K = 0;
   }
 
   /**
@@ -132,12 +139,10 @@ struct SoftmaxWeights {
    * @param K          Number of samples (must be $\leq$ `max_K`).
    * @param stream     CUDA stream (default: 0).
    */
-  void compute(const float* d_costs, float* d_weights,
-               float lambda, int K,
-               cudaStream_t stream = 0)
-  {
+  void compute(const float* d_costs, float* d_weights, float lambda, int K,
+               cudaStream_t stream = 0) {
     const int threads = 256;
-    const int blocks  = (K + threads - 1) / threads;
+    const int blocks = (K + threads - 1) / threads;
 
     /* CUB takes size_t& even for the actual call, so use a local copy. */
     size_t bytes = temp_bytes;
@@ -146,15 +151,15 @@ struct SoftmaxWeights {
     cub::DeviceReduce::Min(d_temp, bytes, d_costs, d_min, K, stream);
 
     /* 2. Exponentiate. */
-    exp_weights_kernel<<<blocks, threads, 0, stream>>>(
-        d_costs, d_weights, d_min, lambda, K);
+    exp_weights_kernel<<<blocks, threads, 0, stream>>>(d_costs, d_weights,
+                                                       d_min, lambda, K);
 
     /* 3. Sum reduction. */
     cub::DeviceReduce::Sum(d_temp, bytes, d_weights, d_sum, K, stream);
 
     /* 4. Normalize. */
-    normalize_weights_kernel<<<blocks, threads, 0, stream>>>(
-        d_weights, d_sum, K);
+    normalize_weights_kernel<<<blocks, threads, 0, stream>>>(d_weights, d_sum,
+                                                             K);
   }
 };
 
