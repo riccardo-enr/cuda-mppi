@@ -713,8 +713,14 @@ def compare(
 
     if plot:
         _plot_compare(
-            sim_time, comp_cuda, comp_jax, rmse_cuda, rmse_jax,
-            pos_cuda, pos_jax, ref,
+            sim_time,
+            comp_cuda,
+            comp_jax,
+            rmse_cuda,
+            rmse_jax,
+            pos_cuda,
+            pos_jax,
+            ref,
         )
 
 
@@ -796,8 +802,14 @@ def _run_tracking_with_times(
 
 
 def _plot_compare(
-    sim_time, comp_cuda, comp_jax, rmse_cuda, rmse_jax,
-    pos_cuda, pos_jax, ref,
+    sim_time,
+    comp_cuda,
+    comp_jax,
+    rmse_cuda,
+    rmse_jax,
+    pos_cuda,
+    pos_jax,
+    ref,
 ):
     import matplotlib.pyplot as plt
     import scienceplots  # noqa: F401
@@ -819,16 +831,29 @@ def _plot_compare(
     ):
         ax = fig3d.add_subplot(1, 2, col, projection="3d")
         ax.plot(
-            ref[:, 0], ref[:, 1], -ref[:, 2],
-            color="tab:orange", lw=0.7, label="Reference",
+            ref[:, 0],
+            ref[:, 1],
+            -ref[:, 2],
+            color="tab:orange",
+            lw=0.7,
+            label="Reference",
         )
         ax.plot(
-            pos[:, 0], pos[:, 1], -pos[:, 2],
-            color="tab:blue", lw=0.6, label="Tracked",
+            pos[:, 0],
+            pos[:, 1],
+            -pos[:, 2],
+            color="tab:blue",
+            lw=0.6,
+            label="Tracked",
         )
         ax.scatter(
-            pos[0, 0], pos[0, 1], -pos[0, 2],
-            c="green", s=15, zorder=5, label="Start",
+            pos[0, 0],
+            pos[0, 1],
+            -pos[0, 2],
+            c="green",
+            s=15,
+            zorder=5,
+            label="Start",
         )
         ax.set_xlabel("X (m)", fontsize=6)
         ax.set_ylabel("Y (m)", fontsize=6)
@@ -841,14 +866,14 @@ def _plot_compare(
     print("Saved compare_trajectory_3d.png")
 
     # ── Figure 2: latency ─────────────────────────────────────────────────
-    C_CUDA = "#E07B39"   # medium orange
-    C_JAX  = "#87CEEB"   # light blue (sky blue)
+    C_CUDA = "#E07B39"  # medium orange
+    C_JAX = "#87CEEB"  # light blue (sky blue)
 
     fig, ax = plt.subplots(figsize=(3.3, 2.5), constrained_layout=True)
 
     p99 = max(np.percentile(comp_cuda, 99), np.percentile(comp_jax, 99))
     ax.plot(t, comp_cuda, color=C_CUDA, lw=0.4, alpha=0.8, label="CUDA")
-    ax.plot(t, comp_jax,  color=C_JAX,  lw=0.4, alpha=0.8, label="JAX")
+    ax.plot(t, comp_jax, color=C_JAX, lw=0.4, alpha=0.8, label="JAX")
     ax.axhline(20.0, color="k", ls="--", lw=0.6, label="20 ms budget")
     ax.set_ylim(0, p99)
     ax.set_xlabel("Time (s)")

@@ -97,9 +97,9 @@ def run_single(
     controls = np.zeros((n_steps, 4), dtype=np.float32)
     comp_times = np.zeros(n_steps, dtype=np.float64)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {controller_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for k in range(n_steps):
         positions[k] = state[:3]
@@ -187,7 +187,10 @@ def run_comparison(
 
     # --- S-MPPI ---
     config_smppi = make_config(
-        num_samples, horizon, dt, lam,
+        num_samples,
+        horizon,
+        dt,
+        lam,
         w_action_seq_cost=w_action_seq_cost,
     )
     ctrl_smppi = cuda_mppi.QuadrotorSMPPI(config_smppi, dynamics, cost)
@@ -197,7 +200,10 @@ def run_comparison(
 
     # --- K-MPPI ---
     config_kmppi = make_config(
-        num_samples, horizon, dt, lam,
+        num_samples,
+        horizon,
+        dt,
+        lam,
         num_support_pts=num_support_pts,
     )
     ctrl_kmppi = cuda_mppi.QuadrotorKMPPI(config_kmppi, dynamics, cost)
@@ -206,15 +212,20 @@ def run_comparison(
     )
 
     # --- Summary table ---
-    print(f"\n{'='*60}")
-    print(f"  COMPARISON SUMMARY")
-    print(f"{'='*60}")
-    print(f"  {'Controller':<12} {'RMSE (m)':>10} {'Comp mean (ms)':>16} {'Comp p95 (ms)':>15}")
-    print(f"  {'-'*55}")
+    print(f"\n{'=' * 60}")
+    print("  COMPARISON SUMMARY")
+    print(f"{'=' * 60}")
+    print(
+        f"  {'Controller':<12} {'RMSE (m)':>10} {'Comp mean (ms)':>16} {'Comp p95 (ms)':>15}"
+    )
+    print(f"  {'-' * 55}")
     for r in results:
         import math
-        if math.isnan(r['rmse_total']):
-            print(f"  {r['name']:<12} {'N/A (skipped)':>10} {'—':>16} {'—':>15}")
+
+        if math.isnan(r["rmse_total"]):
+            print(
+                f"  {r['name']:<12} {'N/A (skipped)':>10} {'—':>16} {'—':>15}"
+            )
         else:
             print(
                 f"  {r['name']:<12} {r['rmse_total']:>10.4f} "
@@ -244,13 +255,24 @@ def _plot_comparison(results, sim_time, dt):
     # --- 3D trajectories ---
     fig = plt.figure(figsize=(3.3, 3.0))
     ax = fig.add_subplot(111, projection="3d")
-    ax.plot(ref_full[:, 0], ref_full[:, 1], -ref_full[:, 2],
-            "r--", lw=0.8, label="Reference")
+    ax.plot(
+        ref_full[:, 0],
+        ref_full[:, 1],
+        -ref_full[:, 2],
+        "r--",
+        lw=0.8,
+        label="Reference",
+    )
     for r in results:
         pos = r["positions"]
-        ax.plot(pos[:, 0], pos[:, 1], -pos[:, 2],
-                color=colors[r["name"]], lw=0.6,
-                label=f"{r['name']} ({r['rmse_total']:.3f} m)")
+        ax.plot(
+            pos[:, 0],
+            pos[:, 1],
+            -pos[:, 2],
+            color=colors[r["name"]],
+            lw=0.6,
+            label=f"{r['name']} ({r['rmse_total']:.3f} m)",
+        )
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
     ax.set_zlabel("Z (m)")
@@ -267,8 +289,13 @@ def _plot_comparison(results, sim_time, dt):
         for r in results:
             pos = r["positions"]
             pos_plot = pos[:, i] if i < 2 else -pos[:, i]
-            ax.plot(t_vec, pos_plot, color=colors[r["name"]], lw=0.5,
-                    label=r["name"])
+            ax.plot(
+                t_vec,
+                pos_plot,
+                color=colors[r["name"]],
+                lw=0.5,
+                label=r["name"],
+            )
         ax.set_ylabel(lab)
         if i == 0:
             ax.legend(fontsize=5)
@@ -279,8 +306,14 @@ def _plot_comparison(results, sim_time, dt):
     # --- Computation time ---
     fig, ax = plt.subplots(figsize=(3.3, 2.0), constrained_layout=True)
     for r in results:
-        ax.plot(t_vec, r["comp_times"], color=colors[r["name"]],
-                lw=0.4, alpha=0.6, label=r["name"])
+        ax.plot(
+            t_vec,
+            r["comp_times"],
+            color=colors[r["name"]],
+            lw=0.4,
+            alpha=0.6,
+            label=r["name"],
+        )
     ax.axhline(20.0, color="r", ls="--", lw=0.8, label="20 ms budget")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Compute time (ms)")
@@ -294,6 +327,7 @@ def _plot_comparison(results, sim_time, dt):
 # ---------------------------------------------------------------------------
 # Pytest entry point
 # ---------------------------------------------------------------------------
+
 
 def test_tracking_comparison():
     """Verify all controllers track the lemniscate with RMSE < 2.0 m."""
@@ -318,10 +352,19 @@ if __name__ == "__main__":
     parser.add_argument("--lambda", dest="lam", type=float, default=1000.0)
     parser.add_argument("-T", "--time", type=float, default=30.0)
     parser.add_argument("--mass", type=float, default=2.0)
-    parser.add_argument("-M", "--support-pts", type=int, default=10,
-                        help="K-MPPI support points (default: 10)")
-    parser.add_argument("--smoothness-weight", type=float, default=1.0,
-                        help="S-MPPI smoothness cost weight (default: 1.0)")
+    parser.add_argument(
+        "-M",
+        "--support-pts",
+        type=int,
+        default=10,
+        help="K-MPPI support points (default: 10)",
+    )
+    parser.add_argument(
+        "--smoothness-weight",
+        type=float,
+        default=1.0,
+        help="S-MPPI smoothness cost weight (default: 1.0)",
+    )
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
 
@@ -338,6 +381,7 @@ if __name__ == "__main__":
     )
 
     import math
+
     for r in results:
         if math.isnan(r["rmse_total"]):
             continue
