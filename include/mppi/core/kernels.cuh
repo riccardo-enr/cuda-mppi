@@ -219,20 +219,30 @@ __global__ inline void apply_bias_kernel(
     float* noise,
     const float* u_nom,
     const float* u_ref,
-    int num_samples,
-    int horizon,
-    int nu,
+    MPPIConfig config,
     int start_biased_idx) {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
-  if (k >= num_samples || k < start_biased_idx) {
+  if (k >= config.num_samples || k < start_biased_idx) {
     return;
   }
 
+  // rollout_kernel computes `u = u_nom + control_sigma * noise`, so to center
+  // a biased sample at u_ref we need the shifted noise to satisfy
+  //   u_nom + sigma_i * noise'_i = u_ref_i
+  // => noise'_i = noise_i + (u_ref_i - u_nom_i) / sigma_i
+  // Previously the division by sigma was missing, so biased samples landed
+  // at u_nom + sigma * (u_ref - u_nom) — only `sigma` of the way to u_ref,
+  // which with sigma << 1 effectively disabled the bias.
+  const int horizon = config.horizon;
+  const int nu = config.nu;
   for (int t = 0; t < horizon; ++t) {
     for (int i = 0; i < nu; ++i) {
       int idx = k * (horizon * nu) + t * nu + i;
       int u_idx = t * nu + i;
-      noise[idx] += u_ref[u_idx] - u_nom[u_idx];
+      float sigma = config.control_sigma[i];
+      if (sigma > 0.0f) {
+        noise[idx] += (u_ref[u_idx] - u_nom[u_idx]) / sigma;
+      }
     }
   }
 }

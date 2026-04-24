@@ -152,8 +152,8 @@ class IMPPIController : public MPPIController<Dynamics, Cost> {
       dim3 grid((this->config_.num_samples + block.x - 1) / block.x);
 
       kernels::apply_bias_kernel<<<grid, block>>>(
-          this->d_noise_, this->d_u_nom_, d_u_ref_, this->config_.num_samples,
-          this->config_.horizon, this->config_.nu, start_biased_idx);
+          this->d_noise_, this->d_u_nom_, d_u_ref_, this->config_,
+          start_biased_idx);
       HANDLE_ERROR(cudaGetLastError());
     }
 

@@ -272,8 +272,7 @@ public:
         dim3 bias_block(256);
         dim3 bias_grid((config_.num_samples + bias_block.x - 1) / bias_block.x);
         kernels::apply_bias_kernel<<<bias_grid, bias_block>>>(
-            d_noise_interp_, d_u_nom_, d_u_ref_, config_.num_samples,
-            config_.horizon, config_.nu, start_biased_idx);
+            d_noise_interp_, d_u_nom_, d_u_ref_, config_, start_biased_idx);
         HANDLE_ERROR(cudaGetLastError());
       }
     }

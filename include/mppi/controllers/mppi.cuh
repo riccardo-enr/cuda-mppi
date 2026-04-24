@@ -306,8 +306,7 @@ class MPPIController {
           dim3 bias_grid((iter_config.num_samples + bias_block.x - 1) /
                          bias_block.x);
           kernels::apply_bias_kernel<<<bias_grid, bias_block>>>(
-              d_noise_, d_u_nom_, d_u_ref_, iter_config.num_samples,
-              iter_config.horizon, iter_config.nu, start_biased_idx);
+              d_noise_, d_u_nom_, d_u_ref_, iter_config, start_biased_idx);
           HANDLE_ERROR(cudaGetLastError());
         }
       }
