@@ -48,7 +48,7 @@ struct DoubleIntegrator3D
   static constexpr int STATE_DIM = 6;
   static constexpr int CONTROL_DIM = 3;
 
-  float a_max = 5.0f;   ///< Max acceleration per axis (m/s²). ~0.5g tilt limit.
+  float a_max[3] = {5.0f, 5.0f, 5.0f};   ///< Per-axis max acceleration (m/s²). Allow asymmetric limits so lateral can be bounded harder than vertical.
 
   /**
    * @brief Euler integration step with acceleration clamping.
@@ -59,7 +59,7 @@ struct DoubleIntegrator3D
   {
     float u[3];
     for (int i = 0; i < 3; ++i) {
-      u[i] = fminf(fmaxf(u_raw[i], -a_max), a_max);
+      u[i] = fminf(fmaxf(u_raw[i], -a_max[i]), a_max[i]);
     }
 
     x_next[0] = x[0] + x[3] * dt;

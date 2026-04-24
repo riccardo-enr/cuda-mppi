@@ -109,6 +109,18 @@ class IMPPIController : public MPPIController<Dynamics, Cost> {
   }
 
   /**
+   * @brief Runtime-set the biased-sampling mixture weight.
+   *
+   * Setting `alpha = 0` disables biased sampling (behaves like plain MPPI).
+   * Intended for the consumer node to fall back to nominal sampling when
+   * the reference trajectory is stale or invalid.
+   */
+  void set_alpha(float alpha) { this->config_.alpha = alpha; }
+
+  /** @brief Current biased-sampling mixture weight. */
+  float get_alpha() const { return this->config_.alpha; }
+
+  /**
    * @brief Run the I-MPPI optimization loop (biased sampling variant).
    *
    * Steps:
